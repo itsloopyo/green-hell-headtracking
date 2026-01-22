@@ -1,0 +1,18 @@
+[workspace]
+name = "green-hell-head-tracking"
+version = "1.0.0"
+description = "Head tracking mod for Green Hell using CameraUnlock shared library"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+sync = "git submodule update --remote shared"
+restore = "dotnet restore src/GreenHellHeadTracking/GreenHellHeadTracking.csproj"
+build = { cmd = "dotnet build src/GreenHellHeadTracking/GreenHellHeadTracking.csproj -c Release", depends-on = ["restore"] }
+install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build"] }
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build"] }
+uninstall = "scripts\\uninstall.cmd"
+clean = "dotnet clean src/GreenHellHeadTracking/GreenHellHeadTracking.csproj"
+release = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"
+release-force = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1 -Force"
+show-changelog = "powershell -ExecutionPolicy Bypass -File scripts/show-changelog.ps1"
