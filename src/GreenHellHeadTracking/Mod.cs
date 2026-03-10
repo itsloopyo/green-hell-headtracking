@@ -21,6 +21,7 @@ namespace GreenHellHeadTracking
     {
         private static OpenTrackReceiver? _receiver;
         private static TrackingProcessor? _processor;
+        private static PoseInterpolator? _poseInterpolator;
         private static HotkeyHandler? _hotkeyHandler;
         private static TrackingLossHandler? _trackingLossHandler;
         private static BaseRotationTracker? _baseRotationTracker;
@@ -29,6 +30,10 @@ namespace GreenHellHeadTracking
         private static bool _trackingEnabled = true;
         private static Transform? _cachedCameraTransform;
         private static Camera? _cachedCamera;
+
+        // Always-on rotation smoothing: 0.15 ≈ 70ms settling (frame-rate independent).
+        // Ensures silky output at high refresh rates even with a slow tracker.
+        private const float RotationSmoothing = 0.15f;
 
         private static Quaternion _smoothedTrackingRotation = Quaternion.identity;
         private static bool _hasSmoothingState;
@@ -64,6 +69,7 @@ namespace GreenHellHeadTracking
 
             _receiver = new OpenTrackReceiver();
             _processor = new TrackingProcessor();
+            _poseInterpolator = new PoseInterpolator();
 
             _processor.Sensitivity = new SensitivitySettings(1f, 1f, 1f, false, true, false);
             _processor.SmoothingFactor = 0f;
@@ -199,6 +205,7 @@ namespace GreenHellHeadTracking
                 }
                 _instance?.LoggerInstance.Msg("Position tracking " + (_positionEnabled ? "enabled" : "disabled"));
             }
+
         }
 
         public void OnHotkeyToggle(bool enabled)
@@ -219,6 +226,7 @@ namespace GreenHellHeadTracking
             {
                 _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
             }
+            _poseInterpolator?.Reset();
             _positionInterpolator?.Reset();
             _instance?.LoggerInstance.Msg("Head tracking recentered");
         }
@@ -241,6 +249,7 @@ namespace GreenHellHeadTracking
             _hasSmoothingState = false;
             _positionCentered = false;
             _positionProcessor?.Reset();
+            _poseInterpolator?.Reset();
             _positionInterpolator?.Reset();
         }
 
@@ -312,7 +321,36 @@ namespace GreenHellHeadTracking
             // negate the third row of the inverted TRS to flip the Z axis.
             if (_hasRenderData && _cachedCamera != null && _cachedCameraTransform != null)
             {
-                Quaternion modifiedRot = _cachedCameraTransform.rotation * _smoothedTrackingRotation;
+                Quaternion baseRotation = _cachedCameraTransform.rotation;
+                Quaternion modifiedRot;
+
+                {
+                    // Spherical yaw: yaw and pitch rotate within the camera's local
+                    // basis (like DL2), keeping the horizon stable without locking to world-up.
+                    Vector3 origFwd = baseRotation * Vector3.forward;
+                    Vector3 origUp = baseRotation * Vector3.up;
+                    Vector3 origRight = baseRotation * Vector3.right;
+
+                    var euler = _smoothedTrackingRotation.eulerAngles;
+                    float yawRad = (euler.y > 180f ? euler.y - 360f : euler.y) * Mathf.Deg2Rad;
+                    float pitchRad = (euler.x > 180f ? euler.x - 360f : euler.x) * Mathf.Deg2Rad;
+                    float rollRad = (euler.z > 180f ? euler.z - 360f : euler.z) * Mathf.Deg2Rad;
+
+                    float cosY = Mathf.Cos(yawRad), sinY = Mathf.Sin(yawRad);
+                    float cosP = Mathf.Cos(pitchRad), sinP = Mathf.Sin(pitchRad);
+
+                    Vector3 fwd = cosP * cosY * origFwd + cosP * sinY * origRight - sinP * origUp;
+
+                    float dot = Vector3.Dot(fwd, origUp);
+                    Vector3 up = (origUp - fwd * dot).normalized;
+
+                    if (Mathf.Abs(rollRad) > 0.0001f)
+                    {
+                        up = Quaternion.AngleAxis(rollRad * Mathf.Rad2Deg, fwd) * up;
+                    }
+
+                    modifiedRot = Quaternion.LookRotation(fwd, up);
+                }
                 Transform? parent = _cachedCameraTransform.parent;
                 Vector3 worldPosOffset = parent != null
                     ? parent.TransformDirection(_pendingPositionOffset)
@@ -329,7 +367,7 @@ namespace GreenHellHeadTracking
 
         private static void ApplyActiveTracking(float deltaTime)
         {
-            if (_receiver == null || _processor == null || _cachedCameraTransform == null || _cachedCamera == null)
+            if (_receiver == null || _processor == null || _poseInterpolator == null || _cachedCameraTransform == null || _cachedCamera == null)
             {
                 throw new InvalidOperationException("ApplyActiveTracking called without required components initialized");
             }
@@ -342,16 +380,21 @@ namespace GreenHellHeadTracking
                 _hasCentered = true;
                 _processor.RecenterTo(rawPose);
                 _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
+                _poseInterpolator.Reset();
                 _positionInterpolator?.Reset();
             }
-            var processed = _processor.Process(rawPose, _receiver.IsRemoteConnection, deltaTime);
+
+            // Velocity extrapolation between tracker samples — fills in frames
+            // so a 30Hz tracker looks smooth on a 240Hz display.
+            var interpolatedPose = _poseInterpolator.Update(rawPose, deltaTime);
+            var processed = _processor.Process(interpolatedPose, _receiver.IsRemoteConnection, deltaTime);
 
             var yawQ = Quaternion.AngleAxis(processed.Yaw, Vector3.up);
             var pitchQ = Quaternion.AngleAxis(processed.Pitch, Vector3.right);
             var rollQ = Quaternion.AngleAxis(processed.Roll, Vector3.forward);
             var rawOffset = yawQ * pitchQ * rollQ;
 
-            float smoothing = SmoothingUtils.GetEffectiveSmoothing(0f, _receiver.IsRemoteConnection);
+            float smoothing = SmoothingUtils.GetEffectiveSmoothing(RotationSmoothing, _receiver.IsRemoteConnection);
 
             if (!_hasSmoothingState)
             {
