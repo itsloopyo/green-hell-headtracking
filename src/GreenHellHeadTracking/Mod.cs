@@ -12,7 +12,7 @@ using Vec3 = CameraUnlock.Core.Data.Vec3;
 using GreenHellHeadTracking.Patches;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(GreenHellHeadTracking.Mod), "Green Hell Head Tracking", "1.0.0", "itsloopyo")]
+[assembly: MelonInfo(typeof(GreenHellHeadTracking.Mod), "Green Hell Head Tracking", "1.0.1", "itsloopyo")]
 [assembly: MelonGame("Creepy Jar", "Green Hell")]
 
 namespace GreenHellHeadTracking

@@ -1,6 +1,11 @@
 # Changelog
 
+## [1.0.1] - 2026-03-10
+
+### Other
+
+- Add pose interpolation and spherical yaw rotation
+
 ## [1.0.0] - 2026-03-08
 
 First release.
-
