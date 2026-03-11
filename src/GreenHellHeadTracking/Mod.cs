@@ -5,9 +5,9 @@ using CameraUnlock.Core.Protocol;
 using CameraUnlock.Core.Processing;
 using CameraUnlock.Core.Data;
 using CameraUnlock.Core.Math;
-using CameraUnlock.Core.Aim;
 using CameraUnlock.Core.Input;
 using CameraUnlock.Core.Unity.Tracking;
+using CameraUnlock.Core.Unity.Extensions;
 using Vec3 = CameraUnlock.Core.Data.Vec3;
 using GreenHellHeadTracking.Patches;
 using UnityEngine;
@@ -38,10 +38,6 @@ namespace GreenHellHeadTracking
         private static Quaternion _smoothedTrackingRotation = Quaternion.identity;
         private static bool _hasSmoothingState;
         private static Vector2 _smoothedScreenOffset = Vector2.zero;
-
-        private static float _cachedHFov;
-        private static float _lastVFov;
-        private static float _lastAspect;
 
         private static PositionProcessor? _positionProcessor;
         private static PositionInterpolator? _positionInterpolator;
@@ -325,43 +321,60 @@ namespace GreenHellHeadTracking
                 Quaternion modifiedRot;
 
                 {
-                    // Spherical yaw: yaw and pitch rotate within the camera's local
-                    // basis (like DL2), keeping the horizon stable without locking to world-up.
-                    Vector3 origFwd = baseRotation * Vector3.forward;
-                    Vector3 origUp = baseRotation * Vector3.up;
-                    Vector3 origRight = baseRotation * Vector3.right;
-
+                    // Horizon-locked yaw (matching DL2): yaw rotates around world up
+                    // so turning left/right stays on the horizon regardless of camera pitch.
+                    // Pitch rotates around the camera's right vector. Up is re-derived
+                    // via Gram-Schmidt to prevent coupling artifacts.
                     var euler = _smoothedTrackingRotation.eulerAngles;
-                    float yawRad = (euler.y > 180f ? euler.y - 360f : euler.y) * Mathf.Deg2Rad;
-                    float pitchRad = (euler.x > 180f ? euler.x - 360f : euler.x) * Mathf.Deg2Rad;
-                    float rollRad = (euler.z > 180f ? euler.z - 360f : euler.z) * Mathf.Deg2Rad;
+                    float yaw = euler.y > 180f ? euler.y - 360f : euler.y;
+                    float pitch = euler.x > 180f ? euler.x - 360f : euler.x;
+                    float roll = euler.z > 180f ? euler.z - 360f : euler.z;
 
-                    float cosY = Mathf.Cos(yawRad), sinY = Mathf.Sin(yawRad);
-                    float cosP = Mathf.Cos(pitchRad), sinP = Mathf.Sin(pitchRad);
+                    Vector3 fwd = baseRotation * Vector3.forward;
+                    Vector3 up = baseRotation * Vector3.up;
 
-                    Vector3 fwd = cosP * cosY * origFwd + cosP * sinY * origRight - sinP * origUp;
-
-                    float dot = Vector3.Dot(fwd, origUp);
-                    Vector3 up = (origUp - fwd * dot).normalized;
-
-                    if (Mathf.Abs(rollRad) > 0.0001f)
+                    // 1. Yaw: rotate fwd and up around world Y (horizon-locked)
+                    if (Mathf.Abs(yaw) > 0.001f)
                     {
-                        up = Quaternion.AngleAxis(rollRad * Mathf.Rad2Deg, fwd) * up;
+                        Quaternion yawRot = Quaternion.AngleAxis(yaw, Vector3.up);
+                        fwd = yawRot * fwd;
+                        up = yawRot * up;
+                    }
+
+                    // 2. Pitch: rotate fwd around camera's right vector
+                    if (Mathf.Abs(pitch) > 0.001f)
+                    {
+                        Vector3 right = Vector3.Cross(up, fwd).normalized;
+                        fwd = Quaternion.AngleAxis(pitch, right) * fwd;
+                    }
+
+                    // 3. Re-derive up perpendicular to new forward (Gram-Schmidt)
+                    float dot = Vector3.Dot(fwd, up);
+                    up = (up - fwd * dot).normalized;
+
+                    // 4. Roll: rotate up around forward
+                    if (Mathf.Abs(roll) > 0.001f)
+                    {
+                        up = Quaternion.AngleAxis(roll, fwd) * up;
                     }
 
                     modifiedRot = Quaternion.LookRotation(fwd, up);
                 }
-                Transform? parent = _cachedCameraTransform.parent;
-                Vector3 worldPosOffset = parent != null
-                    ? parent.TransformDirection(_pendingPositionOffset)
-                    : _pendingPositionOffset;
-                Vector3 modifiedPos = _cachedCameraTransform.position + worldPosOffset;
+                Vector3 modifiedPos = _cachedCameraTransform.position + _pendingPositionOffset;
                 Matrix4x4 viewMatrix = Matrix4x4.TRS(modifiedPos, modifiedRot, Vector3.one).inverse;
                 viewMatrix.m20 = -viewMatrix.m20;
                 viewMatrix.m21 = -viewMatrix.m21;
                 viewMatrix.m22 = -viewMatrix.m22;
                 viewMatrix.m23 = -viewMatrix.m23;
                 _cachedCamera.worldToCameraMatrix = viewMatrix;
+
+                // Reticle compensation: project the base aim direction through the
+                // head-tracked view matrix to find where the crosshair should be.
+                // This correctly handles yaw/pitch coupling that the old tangent
+                // formula missed (e.g. when game camera is pitched, horizon-locked
+                // yaw causes diagonal screen motion, not pure horizontal).
+                _smoothedScreenOffset = CanvasCompensation.CalculateAimScreenOffset(_cachedCamera, baseRotation);
+                CrosshairMover.OffsetCrosshair(_smoothedScreenOffset);
             }
         }
 
@@ -429,15 +442,20 @@ namespace GreenHellHeadTracking
                 var headRotQ = QuaternionUtils.FromYawPitchRoll(yaw, pitch, roll);
                 Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, _receiver.IsRemoteConnection, deltaTime);
                 posOffset = new Vec3(-posOffset.X, posOffset.Y, -posOffset.Z);
-                var posVec = new Vector3(posOffset.X, posOffset.Y, posOffset.Z);
-                // Rotate position offset by yaw only so forward/back movement
-                // stays on the horizon regardless of camera pitch.
-                var yawOnly = Quaternion.Euler(0f, gameRotation.eulerAngles.y, 0f);
-                posVec = yawOnly * posVec;
-                _pendingPositionOffset = posVec;
+                // Orient position using world-space camera forward flattened to
+                // horizontal, matching DL2's approach. This avoids parent-pitch
+                // contamination from the local-yaw + TransformDirection path.
+                Vector3 camFwd = _cachedCameraTransform.forward;
+                Vector3 flatFwd = new Vector3(camFwd.x, 0f, camFwd.z);
+                float flatLen = flatFwd.magnitude;
+                if (flatLen > 0.001f) flatFwd /= flatLen;
+                else flatFwd = Vector3.forward;
+                Vector3 flatRight = Vector3.Cross(Vector3.up, flatFwd);
+                _pendingPositionOffset = flatRight * posOffset.X
+                                       + Vector3.up * posOffset.Y
+                                       + flatFwd * posOffset.Z;
             }
 
-            UpdateCrosshairFromRotation(_smoothedTrackingRotation);
             _hasRenderData = true;
         }
 
@@ -451,8 +469,6 @@ namespace GreenHellHeadTracking
             if (_hasSmoothingState)
             {
                 _hasRenderData = true;
-
-                CrosshairMover.OffsetCrosshair(_smoothedScreenOffset);
             }
         }
 
@@ -467,49 +483,10 @@ namespace GreenHellHeadTracking
 
             _hasRenderData = true;
 
-            UpdateCrosshairFromRotation(_smoothedTrackingRotation);
-
             // Camera is always clean (tracking only applied during rendering),
             // so localRotation IS the game rotation.
             var gameRotation = _cachedCameraTransform.localRotation;
             _baseRotationTracker?.Update(_cachedCameraTransform, gameRotation, _smoothedTrackingRotation);
-        }
-
-        private static void UpdateCrosshairFromRotation(Quaternion trackingRotation)
-        {
-            if (_cachedCamera == null)
-            {
-                throw new InvalidOperationException("UpdateCrosshairFromRotation called without cached camera");
-            }
-
-            // Decompose the smoothed tracking rotation back to Euler angles.
-            // Our composition is YXZ (yaw*pitch*roll), matching Unity's eulerAngles convention.
-            var euler = trackingRotation.eulerAngles;
-            float yaw = euler.y > 180f ? euler.y - 360f : euler.y;
-            float pitch = euler.x > 180f ? euler.x - 360f : euler.x;
-            float roll = euler.z > 180f ? euler.z - 360f : euler.z;
-
-            float vFov = _cachedCamera.fieldOfView;
-            float aspect = _cachedCamera.aspect;
-
-            // Cache hFov — CalculateHorizontalFov does Tan+Atan, but FOV/aspect rarely change.
-            if (vFov != _lastVFov || aspect != _lastAspect)
-            {
-                _lastVFov = vFov;
-                _lastAspect = aspect;
-                _cachedHFov = ScreenOffsetCalculator.CalculateHorizontalFov(vFov, aspect);
-            }
-
-            ScreenOffsetCalculator.Calculate(
-                yaw, pitch, roll,
-                _cachedHFov, vFov,
-                Screen.width, Screen.height,
-                1.0f,
-                out float offsetX, out float offsetY
-            );
-
-            _smoothedScreenOffset = new Vector2(offsetX, offsetY);
-            CrosshairMover.OffsetCrosshair(_smoothedScreenOffset);
         }
 
     }
