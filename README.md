@@ -2,7 +2,7 @@
 
 ![Mod GIF](assets/readme-clip.gif)
 
-An unofficial MelonLoader mod that adds head tracking to Green Hell. Move your head to look around the jungle while your mouse controls where you aim.
+An **unofficial**, community-created MelonLoader mod that adds head tracking to Green Hell. Move your head to look around the jungle while your mouse controls where you aim.
 
 ## Features
 
@@ -13,7 +13,7 @@ An unofficial MelonLoader mod that adds head tracking to Green Hell. Move your h
 ## Requirements
 
 - [Green Hell](https://store.steampowered.com/app/815370/Green_Hell/) (Steam)
-- [OpenTrack](https://github.com/opentrack/opentrack) or any OpenTrack-compatible tracker (smartphone, webcam, or dedicated hardware)
+- [OpenTrack](https://github.com/opentrack/opentrack) or an OpenTrack-compatible tracker (smartphone, webcam, or dedicated hardware)
 
 ## Installation
 
@@ -56,7 +56,7 @@ install.cmd "D:\Games\Green Hell"
 
 ### Phone App Setup
 
-The mod has built-in smoothing for network jitter, so you can send directly from your phone on port 4242 without needing OpenTrack on PC.
+This mod includes built-in smoothing to handle network jitter, so if your tracking app already provides a filtered signal, you can send directly from your phone to the mod on port 4242 without needing OpenTrack on PC.
 
 1. Install an OpenTrack-compatible head tracking app
 2. Configure it to send to your PC's IP on port 4242 (run `ipconfig` to find your IP)
@@ -179,3 +179,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [MelonLoader](https://melonwiki.xyz/) - Mod framework
 - [Harmony](https://github.com/pardeike/Harmony) - Runtime patching
 - [OpenTrack](https://github.com/opentrack/opentrack) - Head tracking protocol
+
+## Disclaimer
+
+This mod is not affiliated with, endorsed by, or supported by Creepy Jar. "Green Hell" is a trademark of Creepy Jar S.A. Use this mod at your own risk — no warranty is provided. Back up your save files before installing any mods.
