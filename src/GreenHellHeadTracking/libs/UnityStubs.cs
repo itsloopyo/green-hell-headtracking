@@ -131,6 +131,9 @@ namespace UnityEngine {
         public Matrix4x4 inverse => default;
         public Quaternion rotation => default;
         public Vector3 lossyScale => default;
+        public Vector3 MultiplyVector(Vector3 vector) => default;
+        public Vector3 MultiplyPoint(Vector3 point) => default;
+        public Vector3 MultiplyPoint3x4(Vector3 point) => default;
         public float this[int row, int column] { get => 0; set { } }
     }
     public struct Vector4 {

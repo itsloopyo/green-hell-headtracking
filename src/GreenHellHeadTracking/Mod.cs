@@ -30,13 +30,15 @@ namespace GreenHellHeadTracking
         private static bool _trackingEnabled = true;
         private static Transform? _cachedCameraTransform;
         private static Camera? _cachedCamera;
+        private static Camera? _cachedOutlineCamera;
 
         // Always-on rotation smoothing: 0.15 ≈ 70ms settling (frame-rate independent).
         // Ensures silky output at high refresh rates even with a slow tracker.
         private const float RotationSmoothing = 0.15f;
 
+        private static readonly SmoothedEulerState _smoothedState = new SmoothedEulerState();
+        // Smoothed tracking rotation for view matrix composition and aim offset
         private static Quaternion _smoothedTrackingRotation = Quaternion.identity;
-        private static bool _hasSmoothingState;
         private static Vector2 _smoothedScreenOffset = Vector2.zero;
 
         private static PositionProcessor? _positionProcessor;
@@ -75,12 +77,7 @@ namespace GreenHellHeadTracking
 
             _positionProcessor = new PositionProcessor
             {
-                Settings = new PositionSettings(
-                    1.0f, 1.0f, 1.0f,
-                    100f, 100f, 100f,
-                    0.15f,
-                    invertX: false, invertY: false, invertZ: false
-                ),
+                Settings = PositionSettings.Default,
                 NeckModelSettings = NeckModelSettings.Disabled,
                 TrackerPivotForward = 0.01f
             };
@@ -104,6 +101,7 @@ namespace GreenHellHeadTracking
             }
 
             ApplyCameraPatches();
+            ApplyHUDPatches();
             ApplyTriggerPatches();
 
             LoggerInstance.Msg("Green Hell Head Tracking initialized on port " + OpenTrackReceiver.DefaultPort);
@@ -136,6 +134,36 @@ namespace GreenHellHeadTracking
             catch (Exception ex)
             {
                 LoggerInstance.Error("Failed to apply CameraManager patches: " + ex);
+            }
+        }
+
+        private void ApplyHUDPatches()
+        {
+            try
+            {
+                var hudManagerType = Type.GetType("HUDManager, Assembly-CSharp");
+                if (hudManagerType == null)
+                {
+                    LoggerInstance.Warning("HUDManager type not found - HUD marker compensation disabled");
+                    return;
+                }
+
+                var updateAfterCamera = AccessTools.Method(hudManagerType, "UpdateAfterCamera");
+                if (updateAfterCamera == null)
+                {
+                    LoggerInstance.Warning("HUDManager.UpdateAfterCamera not found - HUD marker compensation disabled");
+                    return;
+                }
+
+                var prefix = new HarmonyMethod(typeof(HUDManagerPatch), nameof(HUDManagerPatch.UpdateAfterCameraPrefix));
+                var postfix = new HarmonyMethod(typeof(HUDManagerPatch), nameof(HUDManagerPatch.UpdateAfterCameraPostfix));
+                HarmonyInstance.Patch(updateAfterCamera, prefix: prefix, postfix: postfix);
+
+                LoggerInstance.Msg("Patched HUDManager.UpdateAfterCamera (prefix+postfix) - HUD marker compensation active");
+            }
+            catch (Exception ex)
+            {
+                LoggerInstance.Error("Failed to apply HUDManager patches: " + ex);
             }
         }
 
@@ -183,6 +211,7 @@ namespace GreenHellHeadTracking
         public override void OnDeinitializeMelon()
         {
             if (_cachedCamera != null) _cachedCamera.ResetWorldToCameraMatrix();
+            if (_cachedOutlineCamera != null) _cachedOutlineCamera.ResetWorldToCameraMatrix();
             if (_receiver != null) _receiver.Dispose();
             if (_gameStateDetector != null) _gameStateDetector.Dispose();
         }
@@ -232,6 +261,8 @@ namespace GreenHellHeadTracking
             if (_cachedCamera != null && _hasRenderData)
             {
                 _cachedCamera.ResetWorldToCameraMatrix();
+                if (_cachedOutlineCamera != null)
+                    _cachedOutlineCamera.ResetWorldToCameraMatrix();
                 _hasRenderData = false;
                 CrosshairMover.ResetCrosshair();
             }
@@ -242,8 +273,10 @@ namespace GreenHellHeadTracking
             RemoveTrackingOffset();
             _hasRenderData = false;
             _pendingPositionOffset = Vector3.zero;
-            _hasSmoothingState = false;
+            _smoothedState.Reset();
+            _smoothedTrackingRotation = Quaternion.identity;
             _positionCentered = false;
+            _hasCentered = false;
             _positionProcessor?.Reset();
             _poseInterpolator?.Reset();
             _positionInterpolator?.Reset();
@@ -263,6 +296,18 @@ namespace GreenHellHeadTracking
                 _cachedCamera = Camera.main;
                 if (_cachedCamera == null) return;
                 _cachedCameraTransform = _cachedCamera.transform;
+
+                // The outline camera is a child of the main camera. It renders
+                // interactable objects with a replacement shader for the outline
+                // effect. We must apply the same view matrix so outlines track.
+                foreach (var cam in _cachedCamera.GetComponentsInChildren<Camera>(true))
+                {
+                    if (cam.name == "OutlineCamera")
+                    {
+                        _cachedOutlineCamera = cam;
+                        break;
+                    }
+                }
             }
 
             float deltaTime = Time.deltaTime;
@@ -313,69 +358,81 @@ namespace GreenHellHeadTracking
 
             // Apply tracking offset via the view matrix instead of Camera.onPreCull
             // (Camera events throw MissingMethodException under MelonLoader).
-            // Unity camera space uses OpenGL convention (forward = -Z), so we
-            // negate the third row of the inverted TRS to flip the Z axis.
             if (_hasRenderData && _cachedCamera != null && _cachedCameraTransform != null)
             {
-                Quaternion baseRotation = _cachedCameraTransform.rotation;
-                Quaternion modifiedRot;
-
-                {
-                    // Horizon-locked yaw (matching DL2): yaw rotates around world up
-                    // so turning left/right stays on the horizon regardless of camera pitch.
-                    // Pitch rotates around the camera's right vector. Up is re-derived
-                    // via Gram-Schmidt to prevent coupling artifacts.
-                    var euler = _smoothedTrackingRotation.eulerAngles;
-                    float yaw = euler.y > 180f ? euler.y - 360f : euler.y;
-                    float pitch = euler.x > 180f ? euler.x - 360f : euler.x;
-                    float roll = euler.z > 180f ? euler.z - 360f : euler.z;
-
-                    Vector3 fwd = baseRotation * Vector3.forward;
-                    Vector3 up = baseRotation * Vector3.up;
-
-                    // 1. Yaw: rotate fwd and up around world Y (horizon-locked)
-                    if (Mathf.Abs(yaw) > 0.001f)
-                    {
-                        Quaternion yawRot = Quaternion.AngleAxis(yaw, Vector3.up);
-                        fwd = yawRot * fwd;
-                        up = yawRot * up;
-                    }
-
-                    // 2. Pitch: rotate fwd around camera's right vector
-                    if (Mathf.Abs(pitch) > 0.001f)
-                    {
-                        Vector3 right = Vector3.Cross(up, fwd).normalized;
-                        fwd = Quaternion.AngleAxis(pitch, right) * fwd;
-                    }
-
-                    // 3. Re-derive up perpendicular to new forward (Gram-Schmidt)
-                    float dot = Vector3.Dot(fwd, up);
-                    up = (up - fwd * dot).normalized;
-
-                    // 4. Roll: rotate up around forward
-                    if (Mathf.Abs(roll) > 0.001f)
-                    {
-                        up = Quaternion.AngleAxis(roll, fwd) * up;
-                    }
-
-                    modifiedRot = Quaternion.LookRotation(fwd, up);
-                }
-                Vector3 modifiedPos = _cachedCameraTransform.position + _pendingPositionOffset;
-                Matrix4x4 viewMatrix = Matrix4x4.TRS(modifiedPos, modifiedRot, Vector3.one).inverse;
-                viewMatrix.m20 = -viewMatrix.m20;
-                viewMatrix.m21 = -viewMatrix.m21;
-                viewMatrix.m22 = -viewMatrix.m22;
-                viewMatrix.m23 = -viewMatrix.m23;
-                _cachedCamera.worldToCameraMatrix = viewMatrix;
+                SetHeadTrackedViewMatrix();
 
                 // Reticle compensation: project the base aim direction through the
                 // head-tracked view matrix to find where the crosshair should be.
                 // This correctly handles yaw/pitch coupling that the old tangent
                 // formula missed (e.g. when game camera is pitched, horizon-locked
                 // yaw causes diagonal screen motion, not pure horizontal).
+                Quaternion baseRotation = _cachedCameraTransform.rotation;
                 _smoothedScreenOffset = CanvasCompensation.CalculateAimScreenOffset(_cachedCamera, baseRotation);
                 CrosshairMover.OffsetCrosshair(_smoothedScreenOffset);
             }
+        }
+
+        /// <summary>
+        /// Computes and sets the head-tracked worldToCameraMatrix on _cachedCamera.
+        /// Unity camera space uses OpenGL convention (forward = -Z), so we
+        /// negate the third row of the inverted TRS to flip the Z axis.
+        /// </summary>
+        private static void SetHeadTrackedViewMatrix()
+        {
+            Quaternion baseRotation = _cachedCameraTransform!.rotation;
+
+            // Decompose smoothed tracking rotation to Euler angles for ComposeAdditive.
+            // Negate pitch because ComposeAdditive negates internally (assumes positive=up)
+            // but Green Hell's invertPitch:true convention means positive pitch = look down.
+            var euler = _smoothedTrackingRotation.eulerAngles;
+            float yaw = euler.y > 180f ? euler.y - 360f : euler.y;
+            float pitch = euler.x > 180f ? euler.x - 360f : euler.x;
+            float roll = euler.z > 180f ? euler.z - 360f : euler.z;
+
+            Quaternion modifiedRot = CameraRotationComposer.ComposeAdditive(
+                baseRotation, yaw, -pitch, roll);
+            Vector3 modifiedPos = _cachedCameraTransform.position + _pendingPositionOffset;
+
+            // Neck model: compensate for eye orbit around neck pivot
+            Quaternion headRotation = Quaternion.Inverse(baseRotation) * modifiedRot;
+            Vector3 neckPivot = new Vector3(0f, 0.10f, 0.08f);
+            Vector3 eyeMovement = (headRotation * neckPivot) - neckPivot;
+            modifiedPos += baseRotation * eyeMovement;
+
+            Matrix4x4 viewMatrix = Matrix4x4.TRS(modifiedPos, modifiedRot, Vector3.one).inverse;
+            viewMatrix.m20 = -viewMatrix.m20;
+            viewMatrix.m21 = -viewMatrix.m21;
+            viewMatrix.m22 = -viewMatrix.m22;
+            viewMatrix.m23 = -viewMatrix.m23;
+            _cachedCamera!.worldToCameraMatrix = viewMatrix;
+
+            // Outline camera is a child of the main camera — it inherits the
+            // transform but not the overridden worldToCameraMatrix. Apply the
+            // same matrix so the outline renders from the tracked viewpoint.
+            if (_cachedOutlineCamera != null)
+                _cachedOutlineCamera.worldToCameraMatrix = viewMatrix;
+        }
+
+        /// <summary>
+        /// Temporarily applies the head-tracked view matrix so that WorldToScreenPoint
+        /// calls (e.g. in HUDManager.UpdateAfterCamera) project to the correct positions.
+        /// Uses cached tracking data from the previous frame.
+        /// </summary>
+        internal static void ApplyTrackingToViewMatrix()
+        {
+            if (!IsTrackingActive) return;
+            if (_cachedCamera == null || _cachedCameraTransform == null) return;
+            if (_smoothedTrackingRotation == Quaternion.identity && _pendingPositionOffset == Vector3.zero) return;
+            SetHeadTrackedViewMatrix();
+        }
+
+        internal static void ResetViewMatrix()
+        {
+            if (_cachedCamera != null)
+                _cachedCamera.ResetWorldToCameraMatrix();
+            if (_cachedOutlineCamera != null)
+                _cachedOutlineCamera.ResetWorldToCameraMatrix();
         }
 
         private static void ApplyActiveTracking(float deltaTime)
@@ -395,6 +452,7 @@ namespace GreenHellHeadTracking
                 _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
                 _poseInterpolator.Reset();
                 _positionInterpolator?.Reset();
+                _instance?.LoggerInstance.Msg("Recentered to initial head position");
             }
 
             // Velocity extrapolation between tracker samples — fills in frames
@@ -402,23 +460,12 @@ namespace GreenHellHeadTracking
             var interpolatedPose = _poseInterpolator.Update(rawPose, deltaTime);
             var processed = _processor.Process(interpolatedPose, _receiver.IsRemoteConnection, deltaTime);
 
-            var yawQ = Quaternion.AngleAxis(processed.Yaw, Vector3.up);
-            var pitchQ = Quaternion.AngleAxis(processed.Pitch, Vector3.right);
-            var rollQ = Quaternion.AngleAxis(processed.Roll, Vector3.forward);
-            var rawOffset = yawQ * pitchQ * rollQ;
+            _smoothedState.Update(processed.Yaw, processed.Pitch, processed.Roll,
+                RotationSmoothing, _receiver.IsRemoteConnection, deltaTime,
+                out float sYaw, out float sPitch, out float sRoll);
 
-            float smoothing = SmoothingUtils.GetEffectiveSmoothing(RotationSmoothing, _receiver.IsRemoteConnection);
-
-            if (!_hasSmoothingState)
-            {
-                _smoothedTrackingRotation = rawOffset;
-                _hasSmoothingState = true;
-            }
-            else
-            {
-                float t = SmoothingUtils.CalculateSmoothingFactor(smoothing, deltaTime);
-                _smoothedTrackingRotation = t >= 1f ? rawOffset : Quaternion.Slerp(_smoothedTrackingRotation, rawOffset, t);
-            }
+            // Reconstruct smoothed tracking quaternion for aim offset and view matrix
+            _smoothedTrackingRotation = CameraRotationComposer.GetTrackingOnlyRotation(sYaw, sPitch, sRoll);
 
             var gameRotation = _cachedCameraTransform.localRotation;
 
@@ -436,24 +483,15 @@ namespace GreenHellHeadTracking
                 }
                 var interpolatedPos = _positionInterpolator.Update(rawPos, deltaTime);
                 var euler = _smoothedTrackingRotation.eulerAngles;
-                float yaw = euler.y > 180f ? euler.y - 360f : euler.y;
-                float pitch = euler.x > 180f ? euler.x - 360f : euler.x;
-                float roll = euler.z > 180f ? euler.z - 360f : euler.z;
-                var headRotQ = QuaternionUtils.FromYawPitchRoll(yaw, pitch, roll);
+                float eYaw = euler.y > 180f ? euler.y - 360f : euler.y;
+                float ePitch = euler.x > 180f ? euler.x - 360f : euler.x;
+                float eRoll = euler.z > 180f ? euler.z - 360f : euler.z;
+                var headRotQ = QuaternionUtils.FromYawPitchRoll(eYaw, ePitch, eRoll);
                 Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, _receiver.IsRemoteConnection, deltaTime);
+                // Negate X and Z to match Green Hell's coordinate convention
                 posOffset = new Vec3(-posOffset.X, posOffset.Y, -posOffset.Z);
-                // Orient position using world-space camera forward flattened to
-                // horizontal, matching DL2's approach. This avoids parent-pitch
-                // contamination from the local-yaw + TransformDirection path.
-                Vector3 camFwd = _cachedCameraTransform.forward;
-                Vector3 flatFwd = new Vector3(camFwd.x, 0f, camFwd.z);
-                float flatLen = flatFwd.magnitude;
-                if (flatLen > 0.001f) flatFwd /= flatLen;
-                else flatFwd = Vector3.forward;
-                Vector3 flatRight = Vector3.Cross(Vector3.up, flatFwd);
-                _pendingPositionOffset = flatRight * posOffset.X
-                                       + Vector3.up * posOffset.Y
-                                       + flatFwd * posOffset.Z;
+                _pendingPositionOffset = PositionApplicator.ToHorizonLockedWorld(
+                    posOffset, _cachedCameraTransform.rotation);
             }
 
             _hasRenderData = true;
@@ -466,7 +504,7 @@ namespace GreenHellHeadTracking
                 throw new InvalidOperationException("ReapplyLastRotation called without cached camera");
             }
 
-            if (_hasSmoothingState)
+            if (_smoothedTrackingRotation != Quaternion.identity)
             {
                 _hasRenderData = true;
             }
