@@ -3,7 +3,7 @@
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>GreenHellHeadTracking</AssemblyName>
     <RootNamespace>GreenHellHeadTracking</RootNamespace>
-    <Version>1.0.1</Version>
+    <Version>1.0.3</Version>
     <LangVersion>9.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>

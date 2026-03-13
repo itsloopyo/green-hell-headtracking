@@ -12,7 +12,7 @@ using Vec3 = CameraUnlock.Core.Data.Vec3;
 using GreenHellHeadTracking.Patches;
 using UnityEngine;
 
-[assembly: MelonInfo(typeof(GreenHellHeadTracking.Mod), "Green Hell Head Tracking", "1.0.1", "itsloopyo")]
+[assembly: MelonInfo(typeof(GreenHellHeadTracking.Mod), "Green Hell Head Tracking", "1.0.3", "itsloopyo")]
 [assembly: MelonGame("Creepy Jar", "Green Hell")]
 
 namespace GreenHellHeadTracking
@@ -36,7 +36,7 @@ namespace GreenHellHeadTracking
         // Ensures silky output at high refresh rates even with a slow tracker.
         private const float RotationSmoothing = 0.15f;
 
-        private static readonly SmoothedEulerState _smoothedState = new SmoothedEulerState();
+        // Processor handles all rotation smoothing internally (per-axis Euler, no phantom roll).
         // Smoothed tracking rotation for view matrix composition and aim offset
         private static Quaternion _smoothedTrackingRotation = Quaternion.identity;
         private static Vector2 _smoothedScreenOffset = Vector2.zero;
@@ -273,8 +273,8 @@ namespace GreenHellHeadTracking
             RemoveTrackingOffset();
             _hasRenderData = false;
             _pendingPositionOffset = Vector3.zero;
-            _smoothedState.Reset();
             _smoothedTrackingRotation = Quaternion.identity;
+            _processor?.ResetSmoothing();
             _positionCentered = false;
             _hasCentered = false;
             _positionProcessor?.Reset();
@@ -458,14 +458,12 @@ namespace GreenHellHeadTracking
             // Velocity extrapolation between tracker samples — fills in frames
             // so a 30Hz tracker looks smooth on a 240Hz display.
             var interpolatedPose = _poseInterpolator.Update(rawPose, deltaTime);
-            var processed = _processor.Process(interpolatedPose, _receiver.IsRemoteConnection, deltaTime);
+            var processed = _processor.Process(interpolatedPose, deltaTime);
 
-            _smoothedState.Update(processed.Yaw, processed.Pitch, processed.Roll,
-                RotationSmoothing, _receiver.IsRemoteConnection, deltaTime,
-                out float sYaw, out float sPitch, out float sRoll);
-
-            // Reconstruct smoothed tracking quaternion for aim offset and view matrix
-            _smoothedTrackingRotation = CameraRotationComposer.GetTrackingOnlyRotation(sYaw, sPitch, sRoll);
+            // Processor handles smoothing internally (per-axis Euler, baseline floor).
+            // Use its output directly — no second smoothing layer.
+            _smoothedTrackingRotation = CameraRotationComposer.GetTrackingOnlyRotation(
+                processed.Yaw, processed.Pitch, processed.Roll);
 
             var gameRotation = _cachedCameraTransform.localRotation;
 
@@ -487,7 +485,7 @@ namespace GreenHellHeadTracking
                 float ePitch = euler.x > 180f ? euler.x - 360f : euler.x;
                 float eRoll = euler.z > 180f ? euler.z - 360f : euler.z;
                 var headRotQ = QuaternionUtils.FromYawPitchRoll(eYaw, ePitch, eRoll);
-                Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, _receiver.IsRemoteConnection, deltaTime);
+                Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, deltaTime);
                 // Negate X and Z to match Green Hell's coordinate convention
                 posOffset = new Vec3(-posOffset.X, posOffset.Y, -posOffset.Z);
                 _pendingPositionOffset = PositionApplicator.ToHorizonLockedWorld(
