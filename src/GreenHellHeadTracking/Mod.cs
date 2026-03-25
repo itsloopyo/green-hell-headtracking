@@ -36,6 +36,11 @@ namespace GreenHellHeadTracking
         // Ensures silky output at high refresh rates even with a slow tracker.
         private const float RotationSmoothing = 0.15f;
 
+        private const float MaxRaycastDistance = 1000f;
+        private const float MinRaycastDistance = 0.5f;
+        private const float DistanceSmoothingRate = 15f;
+        private static float _lastHitDistance = 100f;
+
         // Processor handles all rotation smoothing internally (per-axis Euler, no phantom roll).
         // Smoothed tracking rotation for view matrix composition and aim offset
         private static Quaternion _smoothedTrackingRotation = Quaternion.identity;
@@ -44,6 +49,8 @@ namespace GreenHellHeadTracking
         private static PositionProcessor? _positionProcessor;
         private static PositionInterpolator? _positionInterpolator;
         private static bool _positionEnabled = true;
+        private const float PositionLimitYUp = 0.05f;
+        private const float PositionLimitYDown = 0.0f;
         private static bool _autoRecentered;
         private static bool _positionCentered;
         private static bool _hasCentered;
@@ -77,8 +84,12 @@ namespace GreenHellHeadTracking
 
             _positionProcessor = new PositionProcessor
             {
-                Settings = PositionSettings.Default,
-                NeckModelSettings = NeckModelSettings.Disabled,
+                Settings = new PositionSettings(
+                    1.0f, 1.0f, 1.0f,
+                    0.30f, PositionLimitYUp, 0.40f, 0.10f,
+                    0.15f,
+                    false, false, false
+                ),
                 TrackerPivotForward = 0.01f
             };
             _positionInterpolator = new PositionInterpolator();
@@ -362,13 +373,20 @@ namespace GreenHellHeadTracking
             {
                 SetHeadTrackedViewMatrix();
 
-                // Reticle compensation: project the base aim direction through the
-                // head-tracked view matrix to find where the crosshair should be.
-                // This correctly handles yaw/pitch coupling that the old tangent
-                // formula missed (e.g. when game camera is pitched, horizon-locked
-                // yaw causes diagonal screen motion, not pure horizontal).
-                Quaternion baseRotation = _cachedCameraTransform.rotation;
-                _smoothedScreenOffset = CanvasCompensation.CalculateAimScreenOffset(_cachedCamera, baseRotation);
+                // Reticle compensation: raycast along the base aim direction to find
+                // the target distance, then project through the head-tracked view matrix.
+                Vector3 aimDir = _cachedCameraTransform.forward;
+
+                RaycastHit hit;
+                if (Physics.Raycast(_cachedCameraTransform.position, aimDir, out hit, MaxRaycastDistance,
+                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+                    && hit.distance >= MinRaycastDistance)
+                {
+                    float t = 1f - Mathf.Exp(-DistanceSmoothingRate * Time.deltaTime);
+                    _lastHitDistance = Mathf.Lerp(_lastHitDistance, hit.distance, t);
+                }
+
+                _smoothedScreenOffset = CanvasCompensation.CalculateAimScreenOffset(_cachedCamera, aimDir, _lastHitDistance, 1f);
                 CrosshairMover.OffsetCrosshair(_smoothedScreenOffset);
             }
         }
@@ -393,12 +411,6 @@ namespace GreenHellHeadTracking
             Quaternion modifiedRot = CameraRotationComposer.ComposeAdditive(
                 baseRotation, yaw, -pitch, roll);
             Vector3 modifiedPos = _cachedCameraTransform.position + _pendingPositionOffset;
-
-            // Neck model: compensate for eye orbit around neck pivot
-            Quaternion headRotation = Quaternion.Inverse(baseRotation) * modifiedRot;
-            Vector3 neckPivot = new Vector3(0f, 0.10f, 0.08f);
-            Vector3 eyeMovement = (headRotation * neckPivot) - neckPivot;
-            modifiedPos += baseRotation * eyeMovement;
 
             Matrix4x4 viewMatrix = Matrix4x4.TRS(modifiedPos, modifiedRot, Vector3.one).inverse;
             viewMatrix.m20 = -viewMatrix.m20;
@@ -455,10 +467,15 @@ namespace GreenHellHeadTracking
                 _instance?.LoggerInstance.Msg("Recentered to initial head position");
             }
 
-            // Velocity extrapolation between tracker samples — fills in frames
-            // so a 30Hz tracker looks smooth on a 240Hz display.
+            // Always update interpolator to maintain velocity state
             var interpolatedPose = _poseInterpolator.Update(rawPose, deltaTime);
-            var processed = _processor.Process(interpolatedPose, deltaTime);
+
+            // Use interpolated pose only when smoothing absorbs prediction corrections;
+            // at smoothing=0, interpolation creates visible correction stutters
+            if (_processor.SmoothingFactor >= 0.001f)
+                rawPose = interpolatedPose;
+
+            var processed = _processor.Process(rawPose, deltaTime);
 
             // Processor handles smoothing internally (per-axis Euler, baseline floor).
             // Use its output directly — no second smoothing layer.
@@ -469,7 +486,7 @@ namespace GreenHellHeadTracking
 
             _baseRotationTracker?.Update(_cachedCameraTransform, gameRotation, _smoothedTrackingRotation);
 
-            // Position processing: tracker position + neck model
+            // Position processing: tracker position
             _pendingPositionOffset = Vector3.zero;
             if (_positionEnabled && _receiver != null && _positionProcessor != null && _positionInterpolator != null)
             {
@@ -486,6 +503,9 @@ namespace GreenHellHeadTracking
                 float eRoll = euler.z > 180f ? euler.z - 360f : euler.z;
                 var headRotQ = QuaternionUtils.FromYawPitchRoll(eYaw, ePitch, eRoll);
                 Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, deltaTime);
+                // Asymmetric Y clamp: prevent camera going below eye height
+                float clampedY = Mathf.Clamp(posOffset.Y, -PositionLimitYDown, PositionLimitYUp);
+                posOffset = new Vec3(posOffset.X, clampedY, posOffset.Z);
                 // Negate X and Z to match Green Hell's coordinate convention
                 posOffset = new Vec3(-posOffset.X, posOffset.Y, -posOffset.Z);
                 _pendingPositionOffset = PositionApplicator.ToHorizonLockedWorld(

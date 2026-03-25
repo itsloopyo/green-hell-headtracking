@@ -180,10 +180,9 @@ namespace GreenHellHeadTracking
 
         protected override bool IsCursorVisible()
         {
-            // Check lock state directly — CursorManager.IsCursorVisible is too
-            // broad and fires during in-game overlays (walkie talkie) where the
-            // player still has camera control.
-            return Cursor.lockState != CursorLockMode.Locked;
+            // Green Hell uses CursorLockMode.None even during gameplay,
+            // so check Cursor.visible instead of lockState.
+            return Cursor.visible;
         }
 
         protected override bool IsMenuVisible()

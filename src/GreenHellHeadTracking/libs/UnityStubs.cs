@@ -462,11 +462,14 @@ namespace UnityEngine {
         public Collider collider { get; }
         public Transform transform { get; }
     }
+    public enum QueryTriggerInteraction { UseGlobal, Collide, Ignore }
     public static class Physics {
+        public const int DefaultRaycastLayers = ~0;
         public static bool Raycast(Ray ray, out RaycastHit hitInfo) { hitInfo = default; return false; }
         public static bool Raycast(Ray ray, out RaycastHit hitInfo, float maxDistance) { hitInfo = default; return false; }
         public static bool Raycast(Ray ray, out RaycastHit hitInfo, float maxDistance, int layerMask) { hitInfo = default; return false; }
         public static bool Raycast(Vector3 origin, Vector3 direction, out RaycastHit hitInfo, float maxDistance) { hitInfo = default; return false; }
+        public static bool Raycast(Vector3 origin, Vector3 direction, out RaycastHit hitInfo, float maxDistance, int layerMask, QueryTriggerInteraction queryTriggerInteraction) { hitInfo = default; return false; }
         public static bool Raycast(Vector3 origin, Vector3 direction, float maxDistance) => false;
         public static bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, int layerMask) => false;
     }
