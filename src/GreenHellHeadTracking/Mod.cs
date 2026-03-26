@@ -49,8 +49,8 @@ namespace GreenHellHeadTracking
         private static PositionProcessor? _positionProcessor;
         private static PositionInterpolator? _positionInterpolator;
         private static bool _positionEnabled = true;
-        private const float PositionLimitYUp = 0.05f;
-        private const float PositionLimitYDown = 0.0f;
+        private const float PositionLimitYUp = 0.15f;
+        private const float PositionLimitYDown = 0.05f;
         private static bool _autoRecentered;
         private static bool _positionCentered;
         private static bool _hasCentered;
@@ -393,23 +393,21 @@ namespace GreenHellHeadTracking
 
         /// <summary>
         /// Computes and sets the head-tracked worldToCameraMatrix on _cachedCamera.
-        /// Unity camera space uses OpenGL convention (forward = -Z), so we
-        /// negate the third row of the inverted TRS to flip the Z axis.
+        /// Head tracking is applied in the camera's local frame so that yaw always
+        /// pans left/right on screen, even at steep pitch angles.
         /// </summary>
         private static void SetHeadTrackedViewMatrix()
         {
-            Quaternion baseRotation = _cachedCameraTransform!.rotation;
-
-            // Decompose smoothed tracking rotation to Euler angles for ComposeAdditive.
-            // Negate pitch because ComposeAdditive negates internally (assumes positive=up)
-            // but Green Hell's invertPitch:true convention means positive pitch = look down.
             var euler = _smoothedTrackingRotation.eulerAngles;
-            float yaw = euler.y > 180f ? euler.y - 360f : euler.y;
-            float pitch = euler.x > 180f ? euler.x - 360f : euler.x;
-            float roll = euler.z > 180f ? euler.z - 360f : euler.z;
+            float trackYaw = euler.y > 180f ? euler.y - 360f : euler.y;
+            float trackPitch = euler.x > 180f ? euler.x - 360f : euler.x;
+            float trackRoll = euler.z > 180f ? euler.z - 360f : euler.z;
 
-            Quaternion modifiedRot = CameraRotationComposer.ComposeAdditive(
-                baseRotation, yaw, -pitch, roll);
+            // Camera-local composition: yaw rotates around the camera's up axis
+            // (not world Y), so it always pans the view left/right regardless of
+            // game pitch.  World-space yaw degenerates into roll at steep pitch.
+            Quaternion headLocal = Quaternion.Euler(trackPitch, trackYaw, trackRoll);
+            Quaternion modifiedRot = _cachedCameraTransform!.rotation * headLocal;
             Vector3 modifiedPos = _cachedCameraTransform.position + _pendingPositionOffset;
 
             Matrix4x4 viewMatrix = Matrix4x4.TRS(modifiedPos, modifiedRot, Vector3.one).inverse;
