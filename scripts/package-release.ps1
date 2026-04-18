@@ -13,6 +13,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectDir = Split-Path -Parent $scriptDir
 
 Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ReleaseWorkflow.psm1") -Force
+Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ModLoaderSetup.psm1") -Force
 
 $csprojPath = Join-Path $projectDir "src\GreenHellHeadTracking\GreenHellHeadTracking.csproj"
 $buildOutputDir = Join-Path $projectDir "src\GreenHellHeadTracking\bin\Release\net472"
@@ -39,6 +40,27 @@ foreach ($dll in $modDlls) {
     if (-not (Test-Path $dllPath)) {
         throw "Required DLL not found: $dllPath"
     }
+}
+
+# Refresh vendored MelonLoader from upstream so every release ZIP ships with
+# the freshest known-good fallback. install.cmd still tries upstream first at
+# user install time. See ~/.claude/CLAUDE.md "Vendoring Third-Party Dependencies".
+$vendorMlDir = Join-Path $projectDir "vendor\melonloader"
+Write-Host "Refreshing vendor/melonloader from upstream..." -ForegroundColor Cyan
+try {
+    Refresh-VendoredLoader `
+        -Name 'melonloader' `
+        -OutputDir $vendorMlDir `
+        -OutputFileName 'MelonLoader.x64.zip' `
+        -Owner 'LavaGang' -Repo 'MelonLoader' `
+        -VersionPrefix 'v0.6.' `
+        -AssetPattern '^MelonLoader\.x64\.zip$' | Out-Null
+} catch {
+    Write-Warning "Could not refresh vendor/melonloader from upstream ($_). Existing vendored copy will be used."
+}
+$vendorMlZip = Join-Path $vendorMlDir "MelonLoader.x64.zip"
+if (-not (Test-Path $vendorMlZip)) {
+    throw "Bundled MelonLoader fallback missing after refresh: $vendorMlZip"
 }
 
 # Validate required scripts
@@ -73,8 +95,22 @@ foreach ($dll in $modDlls) {
     Write-Host "  plugins/$dll" -ForegroundColor Green
 }
 
+# Bundle vendored MelonLoader (Apache-2.0, see THIRD-PARTY-NOTICES.md) as a
+# fallback when install.cmd cannot reach upstream.
+$ghVendorDir = Join-Path $ghStagingDir "vendor\melonloader"
+New-Item -ItemType Directory -Path $ghVendorDir -Force | Out-Null
+foreach ($vendorFile in @("MelonLoader.x64.zip", "LICENSE", "README.md", "fetch-latest.ps1")) {
+    $src = Join-Path $vendorMlDir $vendorFile
+    if (Test-Path $src) {
+        Copy-Item $src -Destination $ghVendorDir -Force
+        Write-Host "  vendor/melonloader/$vendorFile" -ForegroundColor Green
+    } elseif ($vendorFile -in @("MelonLoader.x64.zip", "fetch-latest.ps1")) {
+        throw "Required vendor file missing: $src"
+    }
+}
+
 # Copy documentation
-$docFiles = @("README.md", "LICENSE", "CHANGELOG.md")
+$docFiles = @("README.md", "LICENSE", "CHANGELOG.md", "THIRD-PARTY-NOTICES.md")
 foreach ($doc in $docFiles) {
     $docPath = Join-Path $projectDir $doc
     if (Test-Path $docPath) {

@@ -1,6 +1,6 @@
 # Green Hell Head Tracking
 
-![Mod GIF](assets/readme-clip.gif)
+![Mod GIF](https://raw.githubusercontent.com/headcannonmods/green-hell-headtracking/main/assets/readme-clip.gif)
 
 An **unofficial**, community-created MelonLoader mod that adds head tracking to Green Hell. Move your head to look around the jungle while your mouse controls where you aim.
 
@@ -41,11 +41,14 @@ install.cmd "D:\Games\Green Hell"
 
 ## Controls
 
-| Key | Action |
-|-----|--------|
-| Home | Recenter head tracking |
-| End | Toggle head tracking on/off |
-| Page Up | Toggle positional tracking on/off |
+| Key | Chord | Action |
+|-----|-------|--------|
+| Home | Ctrl+Shift+T | Recenter head tracking |
+| End | Ctrl+Shift+Y | Toggle head tracking on/off |
+| Page Up | Ctrl+Shift+G | Toggle positional (6DOF) tracking on/off |
+| Page Down | Ctrl+Shift+H | Toggle yaw mode (world-space / camera-local) |
+
+The default yaw mode is **camera-local**: head yaw always pans the view horizontally on screen, even if you pitch the game camera steeply up or down. Pressing Page Down switches to **world-space** yaw, which locks horizontal head movement to gravity so the horizon stays level; this feels more natural at moderate angles but degenerates toward roll when you look straight up or down.
 
 ## OpenTrack Setup
 

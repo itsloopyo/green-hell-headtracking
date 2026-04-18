@@ -5,6 +5,7 @@
     <RootNamespace>GreenHellHeadTracking</RootNamespace>
     <Version>1.0.3</Version>
     <LangVersion>9.0</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <OutputType>Library</OutputType>

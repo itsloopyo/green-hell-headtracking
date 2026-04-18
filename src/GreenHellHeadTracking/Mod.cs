@@ -49,6 +49,7 @@ namespace GreenHellHeadTracking
         private static PositionProcessor? _positionProcessor;
         private static PositionInterpolator? _positionInterpolator;
         private static bool _positionEnabled = true;
+        private static bool _worldSpaceYaw;
         private const float PositionLimitYUp = 0.15f;
         private const float PositionLimitYDown = 0.05f;
         private static bool _autoRecentered;
@@ -96,8 +97,18 @@ namespace GreenHellHeadTracking
 
             _gameStateDetector = new GreenHellGameStateDetector(() => Time.time);
 
+            // Nav-cluster keys + Ctrl+Shift+<letter> chord alternatives from the
+            // T/Y/U/G/H/J cluster, so users on tenkeyless/60% boards still have
+            // hotkeys. Letter choice per CLAUDE.md's shared convention.
             _hotkeyHandler = new HotkeyHandler(
-                keyCode => UnityEngine.Input.GetKeyDown((KeyCode)keyCode),
+                keyCode =>
+                {
+                    var kc = (KeyCode)keyCode;
+                    if (UnityEngine.Input.GetKeyDown(kc)) return true;
+                    if (kc == KeyCode.Home && ChordDown(KeyCode.T)) return true;
+                    if (kc == KeyCode.End && ChordDown(KeyCode.Y)) return true;
+                    return false;
+                },
                 null,
                 this,
                 0.3f
@@ -105,11 +116,8 @@ namespace GreenHellHeadTracking
             _hotkeyHandler.SetRecenterKey((int)KeyCode.Home);
             _hotkeyHandler.SetToggleKey((int)KeyCode.End);
 
-            if (!_receiver.Start(OpenTrackReceiver.DefaultPort))
-            {
-                LoggerInstance.Error("Failed to start OpenTrack receiver - port may be in use");
-                return;
-            }
+            _receiver.Log = msg => LoggerInstance.Msg(msg);
+            _receiver.Start(OpenTrackReceiver.DefaultPort);
 
             ApplyCameraPatches();
             ApplyHUDPatches();
@@ -231,7 +239,7 @@ namespace GreenHellHeadTracking
         {
             _hotkeyHandler?.Update(Time.time);
 
-            if (UnityEngine.Input.GetKeyDown(KeyCode.PageUp))
+            if (UnityEngine.Input.GetKeyDown(KeyCode.PageUp) || ChordDown(KeyCode.G))
             {
                 _positionEnabled = !_positionEnabled;
                 if (!_positionEnabled)
@@ -242,6 +250,20 @@ namespace GreenHellHeadTracking
                 _instance?.LoggerInstance.Msg("Position tracking " + (_positionEnabled ? "enabled" : "disabled"));
             }
 
+            if (UnityEngine.Input.GetKeyDown(KeyCode.PageDown) || ChordDown(KeyCode.H))
+            {
+                _worldSpaceYaw = !_worldSpaceYaw;
+                _instance?.LoggerInstance.Msg("Yaw mode: " + (_worldSpaceYaw ? "world-space (horizon-locked)" : "camera-local"));
+            }
+        }
+
+        private static bool ChordDown(KeyCode letter)
+        {
+            bool ctrl = UnityEngine.Input.GetKey(KeyCode.LeftControl) || UnityEngine.Input.GetKey(KeyCode.RightControl);
+            if (!ctrl) return false;
+            bool shift = UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift);
+            if (!shift) return false;
+            return UnityEngine.Input.GetKeyDown(letter);
         }
 
         public void OnHotkeyToggle(bool enabled)
@@ -403,11 +425,22 @@ namespace GreenHellHeadTracking
             float trackPitch = euler.x > 180f ? euler.x - 360f : euler.x;
             float trackRoll = euler.z > 180f ? euler.z - 360f : euler.z;
 
-            // Camera-local composition: yaw rotates around the camera's up axis
-            // (not world Y), so it always pans the view left/right regardless of
-            // game pitch.  World-space yaw degenerates into roll at steep pitch.
-            Quaternion headLocal = Quaternion.Euler(trackPitch, trackYaw, trackRoll);
-            Quaternion modifiedRot = _cachedCameraTransform!.rotation * headLocal;
+            // Default camera-local: yaw always pans view horizontally regardless
+            // of game pitch. World-space (PGDN toggle) locks yaw to world up so
+            // the horizon stays level, at the cost of degenerating into roll
+            // near +/-90 pitch.
+            Quaternion modifiedRot;
+            if (_worldSpaceYaw)
+            {
+                Quaternion worldYaw = Quaternion.AngleAxis(trackYaw, Vector3.up);
+                Quaternion localPR = Quaternion.Euler(trackPitch, 0f, trackRoll);
+                modifiedRot = worldYaw * _cachedCameraTransform!.rotation * localPR;
+            }
+            else
+            {
+                Quaternion headLocal = Quaternion.Euler(trackPitch, trackYaw, trackRoll);
+                modifiedRot = _cachedCameraTransform!.rotation * headLocal;
+            }
             Vector3 modifiedPos = _cachedCameraTransform.position + _pendingPositionOffset;
 
             Matrix4x4 viewMatrix = Matrix4x4.TRS(modifiedPos, modifiedRot, Vector3.one).inverse;

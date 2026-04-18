@@ -16,8 +16,10 @@ set "MOD_DLLS=GreenHellHeadTracking.dll CameraUnlock.Core.dll CameraUnlock.Core.
 set "MOD_INTERNAL_NAME=GreenHellHeadTracking"
 set "MOD_VERSION=1.0.0"
 set "STATE_FILE=.headtracking-state.json"
-set "MELONLOADER_VERSION=0.6.1"
-set "MOD_CONTROLS=Controls:&echo   Home - Recenter head tracking&echo   End  - Toggle head tracking on/off"
+:: MelonLoader version is resolved dynamically by vendor/melonloader/fetch-latest.ps1
+:: (pinned to v0.6.x range). The vendored fallback zip at vendor/melonloader/MelonLoader.x64.zip
+:: is refreshed to latest-within-range at release build time.
+set "MOD_CONTROLS=Controls (nav cluster / chord):&echo   Home     / Ctrl+Shift+T  Recenter&echo   End      / Ctrl+Shift+Y  Toggle tracking&echo   PageUp   / Ctrl+Shift+G  Toggle 6DOF position&echo   PageDown / Ctrl+Shift+H  Toggle yaw mode (world/local)"
 set "GOG_IDS="
 set "SEARCH_DIRS="
 :: --- END CONFIG BLOCK ---
@@ -123,7 +125,7 @@ if not exist "%GAME_PATH%\MelonLoader\net35\MelonLoader.dll" (
     echo.
     color
 ) else (
-    echo MelonLoader found.
+    echo Existing MelonLoader detected, skipping loader install, deploying plugin only.
 )
 echo.
 
@@ -283,27 +285,45 @@ for %%d in (%SEARCH_DIRS%) do (
 exit /b 1
 
 :: ============================================
-:: Install MelonLoader
+:: Install MelonLoader (upstream-first, fall back to vendored copy)
+:: See ~/.claude/CLAUDE.md "Vendoring Third-Party Dependencies".
 :: ============================================
 :install_melonloader
-set "ML_URL=https://github.com/LavaGang/MelonLoader/releases/download/v%MELONLOADER_VERSION%/MelonLoader.x64.zip"
+set "VENDOR_DIR=%SCRIPT_DIR%vendor\melonloader"
+set "VENDOR_ZIP=%VENDOR_DIR%\MelonLoader.x64.zip"
+set "FETCH_SCRIPT=%VENDOR_DIR%\fetch-latest.ps1"
 set "ML_ZIP=%TEMP%\MelonLoader_install.zip"
+set "LOADER_SOURCE="
 
-echo   Downloading MelonLoader v%MELONLOADER_VERSION%...
-curl -fL -o "%ML_ZIP%" "%ML_URL%"
-if errorlevel 1 (
-    echo   ERROR: Download failed. Check your internet connection.
-    exit /b 1
+if exist "%FETCH_SCRIPT%" (
+    echo   Trying upstream MelonLoader (latest within range)...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%FETCH_SCRIPT%" -OutputPath "%ML_ZIP%" >nul 2>&1
+    if not errorlevel 1 (
+        set "LOADER_SOURCE=%ML_ZIP%"
+        set "USED_UPSTREAM=1"
+        echo   Using upstream MelonLoader.
+    )
 )
 
-echo   Extracting to game directory...
-tar -xf "%ML_ZIP%" -C "%GAME_PATH%"
+if not defined LOADER_SOURCE (
+    if not exist "%VENDOR_ZIP%" (
+        echo   ERROR: Upstream unreachable AND bundled fallback missing at:
+        echo     %VENDOR_ZIP%
+        echo   The installer ZIP is corrupt. Re-download the release.
+        exit /b 1
+    )
+    set "LOADER_SOURCE=%VENDOR_ZIP%"
+    echo   Upstream unreachable, using bundled fallback copy.
+)
+
+echo   Extracting MelonLoader to game directory...
+tar -xf "%LOADER_SOURCE%" -C "%GAME_PATH%"
 if errorlevel 1 (
     echo   ERROR: Extraction failed.
-    del "%ML_ZIP%" 2>nul
+    if defined USED_UPSTREAM del "%ML_ZIP%" 2>nul
     exit /b 1
 )
-del "%ML_ZIP%" 2>nul
+if defined USED_UPSTREAM del "%ML_ZIP%" 2>nul
 
 :: Create Mods directory
 if not exist "%GAME_PATH%\Mods" mkdir "%GAME_PATH%\Mods"
@@ -318,5 +338,5 @@ if not exist "%GAME_PATH%\Mods" mkdir "%GAME_PATH%\Mods"
     echo }
 )
 
-echo   MelonLoader v%MELONLOADER_VERSION% installed successfully!
+echo   MelonLoader installed successfully!
 exit /b 0
