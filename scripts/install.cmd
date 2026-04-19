@@ -100,30 +100,25 @@ if not errorlevel 1 (
 )
 
 :: --- Check MelonLoader ---
+:: Second positional arg `UNATTENDED` means the launcher is running us -
+:: skip the interactive "type install to continue" gate, which would
+:: loop forever against a null stdin. MelonLoader initializes on first
+:: game launch whether or not plugins are already sitting in Mods\, so
+:: there's no ordering hazard from deploying straight away.
+set "UNATTENDED="
+if /i "%~2"=="UNATTENDED" set "UNATTENDED=1"
+
 if not exist "%GAME_PATH%\MelonLoader\net35\MelonLoader.dll" (
     echo MelonLoader not found. Installing...
     echo.
     call :install_melonloader
     if errorlevel 1 exit /b 1
     echo.
-    color 0E
-    echo ========================================
-    echo   MelonLoader installed - action required
-    echo ========================================
-    echo.
-    echo MelonLoader was just installed but needs to initialize first.
-    echo.
-    echo   1. Start %GAME_DISPLAY_NAME%
-    echo   2. Wait until you reach the main menu
-    echo   3. Close the game
-    echo   4. Come back here and type "install" to continue
-    echo.
-    :melonloader_gate
-    set "_CONFIRM="
-    set /p "_CONFIRM=Type install to continue: "
-    if /i not "!_CONFIRM!"=="install" goto :melonloader_gate
-    echo.
-    color
+    if defined UNATTENDED (
+        echo MelonLoader installed. It will initialize on first game launch.
+    ) else (
+        call :prompt_melonloader_init
+    )
 ) else (
     echo Existing MelonLoader detected, skipping loader install, deploying plugin only.
 )
@@ -285,6 +280,33 @@ for %%d in (%SEARCH_DIRS%) do (
 exit /b 1
 
 :: ============================================
+:: Interactive MelonLoader init gate (manual-install flow only).
+:: Extracted from the main install block so the label can live at the
+:: top level - cmd labels inside parenthesized blocks interact badly
+:: with `goto`.
+:: ============================================
+:prompt_melonloader_init
+color 0E
+echo ========================================
+echo   MelonLoader installed - action required
+echo ========================================
+echo.
+echo MelonLoader was just installed but needs to initialize first.
+echo.
+echo   1. Start %GAME_DISPLAY_NAME%
+echo   2. Wait until you reach the main menu
+echo   3. Close the game
+echo   4. Come back here and type "install" to continue
+echo.
+:melonloader_gate
+set "_CONFIRM="
+set /p "_CONFIRM=Type install to continue: "
+if /i not "!_CONFIRM!"=="install" goto :melonloader_gate
+echo.
+color
+exit /b 0
+
+:: ============================================
 :: Install MelonLoader (upstream-first, fall back to vendored copy)
 :: See ~/.claude/CLAUDE.md "Vendoring Third-Party Dependencies".
 :: ============================================
@@ -317,7 +339,11 @@ if not defined LOADER_SOURCE (
 )
 
 echo   Extracting MelonLoader to game directory...
-tar -xf "%LOADER_SOURCE%" -C "%GAME_PATH%"
+:: Use the full path to Windows' built-in bsdtar. If the user launched us
+:: from a shell whose PATH contains git-bash / MSYS2 first (common on dev
+:: machines), a bare `tar` resolves to MSYS tar, which treats `C:` in
+:: `-C "C:\..."` as an SSH host ("tar: Cannot connect to C: resolve failed").
+"%SystemRoot%\System32\tar.exe" -xf "%LOADER_SOURCE%" -C "%GAME_PATH%"
 if errorlevel 1 (
     echo   ERROR: Extraction failed.
     if defined USED_UPSTREAM del "%ML_ZIP%" 2>nul
