@@ -296,7 +296,7 @@ set "ML_ZIP=%TEMP%\MelonLoader_install.zip"
 set "LOADER_SOURCE="
 
 if exist "%FETCH_SCRIPT%" (
-    echo   Trying upstream MelonLoader (latest within range)...
+    echo   Trying upstream MelonLoader, latest within range...
     powershell -NoProfile -ExecutionPolicy Bypass -File "%FETCH_SCRIPT%" -OutputPath "%ML_ZIP%" >nul 2>&1
     if not errorlevel 1 (
         set "LOADER_SOURCE=%ML_ZIP%"
