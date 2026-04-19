@@ -13,7 +13,6 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectDir = Split-Path -Parent $scriptDir
 
 Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ReleaseWorkflow.psm1") -Force
-Import-Module (Join-Path $projectDir "cameraunlock-core\powershell\ModLoaderSetup.psm1") -Force
 
 $csprojPath = Join-Path $projectDir "src\GreenHellHeadTracking\GreenHellHeadTracking.csproj"
 $buildOutputDir = Join-Path $projectDir "src\GreenHellHeadTracking\bin\Release\net472"
@@ -42,25 +41,13 @@ foreach ($dll in $modDlls) {
     }
 }
 
-# Refresh vendored MelonLoader from upstream so every release ZIP ships with
-# the freshest known-good fallback. install.cmd still tries upstream first at
-# user install time. See ~/.claude/CLAUDE.md "Vendoring Third-Party Dependencies".
+# Vendor refresh runs as a dependency of `pixi run build`, so by the time we
+# package we already have an up-to-date vendor/melonloader/. We only validate
+# the expected artifacts exist here.
 $vendorMlDir = Join-Path $projectDir "vendor\melonloader"
-Write-Host "Refreshing vendor/melonloader from upstream..." -ForegroundColor Cyan
-try {
-    Refresh-VendoredLoader `
-        -Name 'melonloader' `
-        -OutputDir $vendorMlDir `
-        -OutputFileName 'MelonLoader.x64.zip' `
-        -Owner 'LavaGang' -Repo 'MelonLoader' `
-        -VersionPrefix 'v0.6.' `
-        -AssetPattern '^MelonLoader\.x64\.zip$' | Out-Null
-} catch {
-    Write-Warning "Could not refresh vendor/melonloader from upstream ($_). Existing vendored copy will be used."
-}
 $vendorMlZip = Join-Path $vendorMlDir "MelonLoader.x64.zip"
 if (-not (Test-Path $vendorMlZip)) {
-    throw "Bundled MelonLoader fallback missing after refresh: $vendorMlZip"
+    throw "Bundled MelonLoader fallback missing: $vendorMlZip. Run 'pixi run refresh-vendors' or 'pixi run build' first."
 }
 
 # Validate required scripts
