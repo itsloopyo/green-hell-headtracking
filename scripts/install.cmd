@@ -16,9 +16,9 @@ set "MOD_DLLS=GreenHellHeadTracking.dll CameraUnlock.Core.dll CameraUnlock.Core.
 set "MOD_INTERNAL_NAME=GreenHellHeadTracking"
 set "MOD_VERSION=1.0.0"
 set "STATE_FILE=.headtracking-state.json"
-:: MelonLoader version is resolved dynamically by vendor/melonloader/fetch-latest.ps1
-:: (pinned to v0.6.x range). The vendored fallback zip at vendor/melonloader/MelonLoader.x64.zip
-:: is refreshed to latest-within-range at release build time.
+:: MelonLoader (v0.6.x range) ships as the vendored zip at
+:: vendor/melonloader/MelonLoader.x64.zip. Bump it via `pixi run update-deps`
+:: in the dev tree, then commit. install.cmd never fetches upstream.
 set "MOD_CONTROLS=Controls (nav cluster / chord):&echo   Home     / Ctrl+Shift+T  Recenter&echo   End      / Ctrl+Shift+Y  Toggle tracking&echo   PageUp   / Ctrl+Shift+G  Toggle 6DOF position&echo   PageDown / Ctrl+Shift+H  Toggle yaw mode (world/local)"
 set "GOG_IDS="
 set "SEARCH_DIRS="
@@ -307,49 +307,32 @@ color
 exit /b 0
 
 :: ============================================
-:: Install MelonLoader (upstream-first, fall back to vendored copy)
+:: Install MelonLoader from the bundled vendored copy.
+:: Vendor tree is the single source of truth at install time. To bump the
+:: bundled version, run `pixi run update-deps` and commit.
 :: See ~/.claude/CLAUDE.md "Vendoring Third-Party Dependencies".
 :: ============================================
 :install_melonloader
 set "VENDOR_DIR=%SCRIPT_DIR%vendor\melonloader"
 set "VENDOR_ZIP=%VENDOR_DIR%\MelonLoader.x64.zip"
-set "FETCH_SCRIPT=%VENDOR_DIR%\fetch-latest.ps1"
-set "ML_ZIP=%TEMP%\MelonLoader_install.zip"
-set "LOADER_SOURCE="
 
-if exist "%FETCH_SCRIPT%" (
-    echo   Trying upstream MelonLoader, latest within range...
-    powershell -NoProfile -ExecutionPolicy Bypass -File "%FETCH_SCRIPT%" -OutputPath "%ML_ZIP%" >nul 2>&1
-    if not errorlevel 1 (
-        set "LOADER_SOURCE=%ML_ZIP%"
-        set "USED_UPSTREAM=1"
-        echo   Using upstream MelonLoader.
-    )
+if not exist "%VENDOR_ZIP%" (
+    echo   ERROR: Bundled MelonLoader not found at:
+    echo     %VENDOR_ZIP%
+    echo   The installer ZIP is corrupt. Re-download the release.
+    exit /b 1
 )
 
-if not defined LOADER_SOURCE (
-    if not exist "%VENDOR_ZIP%" (
-        echo   ERROR: Upstream unreachable AND bundled fallback missing at:
-        echo     %VENDOR_ZIP%
-        echo   The installer ZIP is corrupt. Re-download the release.
-        exit /b 1
-    )
-    set "LOADER_SOURCE=%VENDOR_ZIP%"
-    echo   Upstream unreachable, using bundled fallback copy.
-)
-
-echo   Extracting MelonLoader to game directory...
+echo   Extracting bundled MelonLoader to game directory...
 :: Use the full path to Windows' built-in bsdtar. If the user launched us
 :: from a shell whose PATH contains git-bash / MSYS2 first (common on dev
 :: machines), a bare `tar` resolves to MSYS tar, which treats `C:` in
 :: `-C "C:\..."` as an SSH host ("tar: Cannot connect to C: resolve failed").
-"%SystemRoot%\System32\tar.exe" -xf "%LOADER_SOURCE%" -C "%GAME_PATH%"
+"%SystemRoot%\System32\tar.exe" -xf "%VENDOR_ZIP%" -C "%GAME_PATH%"
 if errorlevel 1 (
     echo   ERROR: Extraction failed.
-    if defined USED_UPSTREAM del "%ML_ZIP%" 2>nul
     exit /b 1
 )
-if defined USED_UPSTREAM del "%ML_ZIP%" 2>nul
 
 :: Create Mods directory
 if not exist "%GAME_PATH%\Mods" mkdir "%GAME_PATH%\Mods"
