@@ -47,7 +47,7 @@ foreach ($dll in $modDlls) {
 $vendorMlDir = Join-Path $projectDir "vendor\melonloader"
 $vendorMlZip = Join-Path $vendorMlDir "MelonLoader.x64.zip"
 if (-not (Test-Path $vendorMlZip)) {
-    throw "Bundled MelonLoader fallback missing: $vendorMlZip. Run 'pixi run refresh-vendors' or 'pixi run build' first."
+    throw "Bundled MelonLoader missing: $vendorMlZip. Run 'pixi run update-deps' first."
 }
 
 # Validate required scripts
@@ -104,16 +104,16 @@ foreach ($dll in $modDlls) {
     Write-Host "  plugins/$dll" -ForegroundColor Green
 }
 
-# Bundle vendored MelonLoader (Apache-2.0, see THIRD-PARTY-NOTICES.md) as a
-# fallback when install.cmd cannot reach upstream.
+# Bundle vendored MelonLoader (Apache-2.0, see THIRD-PARTY-NOTICES.md) as the
+# install-time source of truth. install.cmd extracts this zip directly.
 $ghVendorDir = Join-Path $ghStagingDir "vendor\melonloader"
 New-Item -ItemType Directory -Path $ghVendorDir -Force | Out-Null
-foreach ($vendorFile in @("MelonLoader.x64.zip", "LICENSE", "README.md", "fetch-latest.ps1")) {
+foreach ($vendorFile in @("MelonLoader.x64.zip", "LICENSE", "README.md")) {
     $src = Join-Path $vendorMlDir $vendorFile
     if (Test-Path $src) {
         Copy-Item $src -Destination $ghVendorDir -Force
         Write-Host "  vendor/melonloader/$vendorFile" -ForegroundColor Green
-    } elseif ($vendorFile -in @("MelonLoader.x64.zip", "fetch-latest.ps1")) {
+    } elseif ($vendorFile -eq "MelonLoader.x64.zip") {
         throw "Required vendor file missing: $src"
     }
 }
