@@ -41,12 +41,21 @@ install.cmd "D:\Games\Green Hell"
 
 ## Controls
 
-| Key | Chord | Action |
-|-----|-------|--------|
-| Home | Ctrl+Shift+T | Recenter head tracking |
-| End | Ctrl+Shift+Y | Toggle head tracking on/off |
-| Page Up | Ctrl+Shift+G | Toggle positional (6DOF) tracking on/off |
-| Page Down | Ctrl+Shift+H | Toggle yaw mode (world-space / camera-local) |
+Two equivalent binding sets - use whichever your keyboard has:
+
+| Action              | Nav-cluster | Chord           |
+|---------------------|-------------|-----------------|
+| Recenter            | `Home`      | `Ctrl+Shift+T`  |
+| Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
+| Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
+| Toggle yaw mode     | `Page Down` | `Ctrl+Shift+H`  |
+
+`Page Up` / `Ctrl+Shift+G` cycles tracking mode:
+
+1. Normal head-tracked gameplay
+2. Positional tracking disabled, rotational tracking enabled
+3. Rotational tracking disabled, positional tracking enabled
+4. Back to normal
 
 The default yaw mode is **camera-local**: head yaw always pans the view horizontally on screen, even if you pitch the game camera steeply up or down. Pressing Page Down switches to **world-space** yaw, which locks horizontal head movement to gravity so the horizon stays level; this feels more natural at moderate angles but degenerates toward roll when you look straight up or down.
 

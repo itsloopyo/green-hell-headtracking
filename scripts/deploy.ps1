@@ -18,7 +18,7 @@ $sharedModulesPath = Join-Path $projectRoot "cameraunlock-core\powershell"
 Import-Module (Join-Path $sharedModulesPath "GamePathDetection.psm1") -Force
 Import-Module (Join-Path $sharedModulesPath "ModLoaderSetup.psm1") -Force
 
-$gameId = 'GreenHell'
+$gameId = 'green-hell'
 $config = Get-GameConfig -GameId $gameId
 
 # Find game installation
