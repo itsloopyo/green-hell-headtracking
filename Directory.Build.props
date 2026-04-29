@@ -1,5 +1,21 @@
 <Project>
-  <!-- Set UnityEnginePath for all projects including submodules -->
+  <!-- UnityEnginePath drives where CameraUnlock.Core.Unity (in the submodule)
+       resolves UnityEngine.*.dll. PropertyGroups inside GreenHellHeadTracking.csproj
+       don't propagate to ProjectReferences, so the submodule project depends on
+       this file to find Unity assemblies. Resolution order:
+         1. Caller-supplied -p:UnityEnginePath=...
+         2. GREEN_HELL_PATH env var \GH_Data\Managed
+         3. Default Steam install paths \GH_Data\Managed
+         4. Local libs folder (populated by deploy.ps1 after first successful deploy) -->
+  <PropertyGroup Condition="'$(UnityEnginePath)' == '' And '$(GREEN_HELL_PATH)' != '' And Exists('$(GREEN_HELL_PATH)\GH_Data\Managed')">
+    <UnityEnginePath>$(GREEN_HELL_PATH)\GH_Data\Managed</UnityEnginePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(UnityEnginePath)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\common\Green Hell\GH_Data\Managed')">
+    <UnityEnginePath>C:\Program Files (x86)\Steam\steamapps\common\Green Hell\GH_Data\Managed</UnityEnginePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(UnityEnginePath)' == '' And Exists('C:\Program Files\Steam\steamapps\common\Green Hell\GH_Data\Managed')">
+    <UnityEnginePath>C:\Program Files\Steam\steamapps\common\Green Hell\GH_Data\Managed</UnityEnginePath>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(UnityEnginePath)' == ''">
     <UnityEnginePath>$(MSBuildThisFileDirectory)src\GreenHellHeadTracking\libs</UnityEnginePath>
   </PropertyGroup>

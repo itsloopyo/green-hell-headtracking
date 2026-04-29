@@ -7,7 +7,10 @@ platforms = ["win-64"]
 
 [tasks]
 sync = "git submodule update --remote cameraunlock-core"
-restore = "dotnet restore src/GreenHellHeadTracking/GreenHellHeadTracking.csproj"
+# Extract net35 MelonLoader DLLs from the vendored zip into libs/ so the build
+# resolves them without first running deploy.ps1.
+bootstrap-build-deps = "powershell -ExecutionPolicy Bypass -File scripts/bootstrap-build-deps.ps1"
+restore = { cmd = "dotnet restore src/GreenHellHeadTracking/GreenHellHeadTracking.csproj", depends-on = ["bootstrap-build-deps"] }
 build = { cmd = "dotnet build src/GreenHellHeadTracking/GreenHellHeadTracking.csproj -c Release", depends-on = ["restore"] }
 # Bump vendored mod-loader copies to latest upstream within pinned range.
 # Manual; commit the result. CI does not run this.

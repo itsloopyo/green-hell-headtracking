@@ -49,6 +49,7 @@ namespace GreenHellHeadTracking
         private static PositionProcessor? _positionProcessor;
         private static PositionInterpolator? _positionInterpolator;
         private static bool _positionEnabled = true;
+        private static bool _rotationEnabled = true;
         private static bool _worldSpaceYaw;
         private const float PositionLimitYUp = 0.15f;
         private const float PositionLimitYDown = 0.05f;
@@ -241,13 +242,7 @@ namespace GreenHellHeadTracking
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.PageUp) || ChordDown(KeyCode.G))
             {
-                _positionEnabled = !_positionEnabled;
-                if (!_positionEnabled)
-                {
-                    _positionProcessor?.ResetSmoothing();
-                    _positionInterpolator?.Reset();
-                }
-                _instance?.LoggerInstance.Msg("Position tracking " + (_positionEnabled ? "enabled" : "disabled"));
+                CycleTrackingMode();
             }
 
             if (UnityEngine.Input.GetKeyDown(KeyCode.PageDown) || ChordDown(KeyCode.H))
@@ -264,6 +259,49 @@ namespace GreenHellHeadTracking
             bool shift = UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift);
             if (!shift) return false;
             return UnityEngine.Input.GetKeyDown(letter);
+        }
+
+        // Three-state cycle: full -> rotation only -> position only -> full ...
+        private static void CycleTrackingMode()
+        {
+            bool newRot, newPos;
+            if (_rotationEnabled && _positionEnabled)
+            {
+                newRot = true;
+                newPos = false;
+            }
+            else if (_rotationEnabled && !_positionEnabled)
+            {
+                newRot = false;
+                newPos = true;
+            }
+            else
+            {
+                newRot = true;
+                newPos = true;
+            }
+
+            if (!newPos && _positionEnabled)
+            {
+                _positionProcessor?.ResetSmoothing();
+                _positionInterpolator?.Reset();
+            }
+            if (!newRot && _rotationEnabled)
+            {
+                _processor?.ResetSmoothing();
+                _poseInterpolator?.Reset();
+                _smoothedTrackingRotation = Quaternion.identity;
+            }
+
+            _rotationEnabled = newRot;
+            _positionEnabled = newPos;
+
+            string label = newRot && newPos
+                ? "full (rotation + position)"
+                : newRot
+                    ? "rotation only (position disabled)"
+                    : "position only (rotation disabled)";
+            _instance?.LoggerInstance.Msg("Tracking mode: " + label);
         }
 
         public void OnHotkeyToggle(bool enabled)
@@ -510,8 +548,10 @@ namespace GreenHellHeadTracking
 
             // Processor handles smoothing internally (per-axis Euler, baseline floor).
             // Use its output directly — no second smoothing layer.
-            _smoothedTrackingRotation = CameraRotationComposer.GetTrackingOnlyRotation(
-                processed.Yaw, processed.Pitch, processed.Roll);
+            _smoothedTrackingRotation = _rotationEnabled
+                ? CameraRotationComposer.GetTrackingOnlyRotation(
+                    processed.Yaw, processed.Pitch, processed.Roll)
+                : Quaternion.identity;
 
             var gameRotation = _cachedCameraTransform.localRotation;
 
