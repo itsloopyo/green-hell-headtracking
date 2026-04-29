@@ -119,14 +119,17 @@ if (-not $hasExistingTags) {
     $changelogArgs = @{
         ChangelogPath = $changelogPath
         Version = $Version
-        ArtifactPaths = @(
+    }
+    if ($Force) {
+        $changelogArgs.IncludeAll = $true
+    } else {
+        $changelogArgs.ArtifactPaths = @(
             "src/GreenHellHeadTracking/",
             "cameraunlock-core",
             "scripts/install.cmd",
             "scripts/uninstall.cmd"
         )
     }
-    if ($Force) { $changelogArgs.IncludeAll = $true }
     New-ChangelogFromCommits @changelogArgs
 }
 
