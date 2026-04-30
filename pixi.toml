@@ -20,5 +20,4 @@ package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-rele
 uninstall = "scripts\\uninstall.cmd"
 clean = "dotnet clean src/GreenHellHeadTracking/GreenHellHeadTracking.csproj"
 release = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"
-release-force = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1 -Force"
 show-changelog = "powershell -ExecutionPolicy Bypass -File scripts/show-changelog.ps1"
