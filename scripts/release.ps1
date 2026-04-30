@@ -22,8 +22,7 @@
 #>
 param(
     [Parameter(Position=0)]
-    [string]$Version = "",
-    [switch]$Force
+    [string]$Version = ""
 )
 
 Set-StrictMode -Version Latest
@@ -63,31 +62,27 @@ try {
 
 $tagName = "v$Version"
 
-if (-not $Force) {
-    # Check if we're on main branch
-    $currentBranch = git rev-parse --abbrev-ref HEAD
-    if ($currentBranch -ne "main") {
-        Write-Host "Error: Must be on 'main' branch to release (currently on '$currentBranch')" -ForegroundColor Red
-        exit 1
-    }
+# Check if we're on main branch
+$currentBranch = git rev-parse --abbrev-ref HEAD
+if ($currentBranch -ne "main") {
+    Write-Host "Error: Must be on 'main' branch to release (currently on '$currentBranch')" -ForegroundColor Red
+    exit 1
+}
 
-    # Check for uncommitted changes
-    $status = git status --porcelain
-    if ($status) {
-        Write-Host "Error: Working directory has uncommitted changes" -ForegroundColor Red
-        Write-Host $status -ForegroundColor Gray
-        Write-Host "Please commit or stash changes before releasing" -ForegroundColor Yellow
-        exit 1
-    }
+# Check for uncommitted changes
+$status = git status --porcelain
+if ($status) {
+    Write-Host "Error: Working directory has uncommitted changes" -ForegroundColor Red
+    Write-Host $status -ForegroundColor Gray
+    Write-Host "Please commit or stash changes before releasing" -ForegroundColor Yellow
+    exit 1
+}
 
-    # Check if tag already exists
-    $existingTag = git tag -l $tagName
-    if ($existingTag) {
-        Write-Host "Error: Tag '$tagName' already exists" -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-Host "WARNING: --force mode, skipping git checks" -ForegroundColor Yellow
+# Check if tag already exists
+$existingTag = git tag -l $tagName
+if ($existingTag) {
+    Write-Host "Error: Tag '$tagName' already exists" -ForegroundColor Red
+    exit 1
 }
 
 Write-Host "Current version: $currentVersion" -ForegroundColor Gray
@@ -119,11 +114,7 @@ if (-not $hasExistingTags) {
     $changelogArgs = @{
         ChangelogPath = $changelogPath
         Version = $Version
-    }
-    if ($Force) {
-        $changelogArgs.IncludeAll = $true
-    } else {
-        $changelogArgs.ArtifactPaths = @(
+        ArtifactPaths = @(
             "src/GreenHellHeadTracking/",
             "cameraunlock-core",
             "scripts/install.cmd",
