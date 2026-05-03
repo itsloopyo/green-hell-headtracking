@@ -22,14 +22,13 @@ $projectRoot = Split-Path -Parent $scriptDir
 
 Import-Module (Join-Path $projectRoot "cameraunlock-core\powershell\DevDeploy.psm1") -Force
 Import-Module (Join-Path $projectRoot "cameraunlock-core\powershell\ModDeployment.psm1") -Force
+$buildOutput = Join-Path $projectRoot "src\GreenHellHeadTracking\bin\$Configuration\net472"
 $result = Invoke-DevDeployMelonLoader `
     -GameId 'green-hell' `
     -GameDisplayName 'Green Hell' `
-    -ProjectRoot $projectRoot `
-    -ProjectName 'GreenHellHeadTracking' `
+    -BuildOutputPath $buildOutput `
     -ModDllName 'GreenHellHeadTracking.dll' `
-    -Configuration $Configuration `
-    -ExtraDlls @('CameraUnlock.Core.dll', 'CameraUnlock.Core.Unity.dll') `
+    -ExtraDlls @('CameraUnlock.Core.dll', 'CameraUnlock.Core.Unity.dll', 'CameraUnlock.Core.Unity.Harmony.dll') `
     -GivenPath $GivenPath `
     -EnsureLoader
 
