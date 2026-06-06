@@ -32,10 +32,6 @@ namespace GreenHellHeadTracking
         private static Camera? _cachedCamera;
         private static Camera? _cachedOutlineCamera;
 
-        // Always-on rotation smoothing: 0.15 ≈ 70ms settling (frame-rate independent).
-        // Ensures silky output at high refresh rates even with a slow tracker.
-        private const float RotationSmoothing = 0.15f;
-
         private const float MaxRaycastDistance = 1000f;
         private const float MinRaycastDistance = 0.5f;
         private const float DistanceSmoothingRate = 15f;
@@ -98,17 +94,15 @@ namespace GreenHellHeadTracking
 
             _gameStateDetector = new GreenHellGameStateDetector(() => Time.time);
 
-            // Nav-cluster keys + Ctrl+Shift+<letter> chord alternatives from the
-            // T/Y/U/G/H/J cluster, so users on tenkeyless/60% boards still have
-            // hotkeys. Letter choice per CLAUDE.md's shared convention.
+            // Nav-cluster keys + Ctrl+Shift+<letter> chord alternatives so users
+            // on tenkeyless/60% boards still have hotkeys.
             _hotkeyHandler = new HotkeyHandler(
                 keyCode =>
                 {
                     var kc = (KeyCode)keyCode;
-                    if (UnityEngine.Input.GetKeyDown(kc)) return true;
-                    if (kc == KeyCode.Home && ChordDown(KeyCode.T)) return true;
-                    if (kc == KeyCode.End && ChordDown(KeyCode.Y)) return true;
-                    return false;
+                    if (kc == KeyCode.Home) return ChordHotkeys.IsActionPressed(kc, ChordHotkeys.RecenterLetter);
+                    if (kc == KeyCode.End) return ChordHotkeys.IsActionPressed(kc, ChordHotkeys.ToggleLetter);
+                    return UnityEngine.Input.GetKeyDown(kc);
                 },
                 null,
                 this,
@@ -240,25 +234,16 @@ namespace GreenHellHeadTracking
         {
             _hotkeyHandler?.Update(Time.time);
 
-            if (UnityEngine.Input.GetKeyDown(KeyCode.PageUp) || ChordDown(KeyCode.G))
+            if (ChordHotkeys.IsActionPressed(KeyCode.PageUp, ChordHotkeys.PositionLetter))
             {
                 CycleTrackingMode();
             }
 
-            if (UnityEngine.Input.GetKeyDown(KeyCode.PageDown) || ChordDown(KeyCode.H))
+            if (ChordHotkeys.IsActionPressed(KeyCode.PageDown, ChordHotkeys.FourthToggleLetter))
             {
                 _worldSpaceYaw = !_worldSpaceYaw;
                 _instance?.LoggerInstance.Msg("Yaw mode: " + (_worldSpaceYaw ? "world-space (horizon-locked)" : "camera-local"));
             }
-        }
-
-        private static bool ChordDown(KeyCode letter)
-        {
-            bool ctrl = UnityEngine.Input.GetKey(KeyCode.LeftControl) || UnityEngine.Input.GetKey(KeyCode.RightControl);
-            if (!ctrl) return false;
-            bool shift = UnityEngine.Input.GetKey(KeyCode.LeftShift) || UnityEngine.Input.GetKey(KeyCode.RightShift);
-            if (!shift) return false;
-            return UnityEngine.Input.GetKeyDown(letter);
         }
 
         // Three-state cycle: full -> rotation only -> position only -> full ...
