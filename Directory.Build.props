@@ -1,21 +1,19 @@
 <Project>
-  <!-- UnityEnginePath drives where CameraUnlock.Core.Unity (in the submodule)
-       resolves UnityEngine.*.dll. PropertyGroups inside GreenHellHeadTracking.csproj
-       don't propagate to ProjectReferences, so the submodule project depends on
-       this file to find Unity assemblies. Resolution order:
-         1. Caller-supplied -p:UnityEnginePath=...
-         2. GREEN_HELL_PATH env var \GH_Data\Managed
-         3. Default Steam install paths \GH_Data\Managed
-         4. Local libs folder (populated by deploy.ps1 after first successful deploy) -->
-  <PropertyGroup Condition="'$(UnityEnginePath)' == '' And '$(GREEN_HELL_PATH)' != '' And Exists('$(GREEN_HELL_PATH)\GH_Data\Managed')">
-    <UnityEnginePath>$(GREEN_HELL_PATH)\GH_Data\Managed</UnityEnginePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(UnityEnginePath)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\common\Green Hell\GH_Data\Managed')">
-    <UnityEnginePath>C:\Program Files (x86)\Steam\steamapps\common\Green Hell\GH_Data\Managed</UnityEnginePath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(UnityEnginePath)' == '' And Exists('C:\Program Files\Steam\steamapps\common\Green Hell\GH_Data\Managed')">
-    <UnityEnginePath>C:\Program Files\Steam\steamapps\common\Green Hell\GH_Data\Managed</UnityEnginePath>
-  </PropertyGroup>
+  <!-- UnityEnginePath drives where the build (and the CameraUnlock.Core.Unity
+       submodule project, which reads this file because PropertyGroups in
+       GreenHellHeadTracking.csproj don't propagate to ProjectReferences)
+       resolves UnityEngine.*.dll.
+
+       It resolves to the generated stub assemblies in src/.../libs - produced
+       by scripts/bootstrap-build-deps.ps1 from the checked-in UnityStubs.cs -
+       so the build NEVER depends on a local Green Hell install. This is
+       deliberate: building against the game's real DLLs locally while CI builds
+       against the stubs is exactly how a build passes locally and then fails on
+       a runner. Both paths build against these stubs.
+
+       A caller can still override with -p:UnityEnginePath=... (e.g. to validate
+       the stubs against a real game install), but that is an explicit opt-in,
+       never the default. -->
   <PropertyGroup Condition="'$(UnityEnginePath)' == ''">
     <UnityEnginePath>$(MSBuildThisFileDirectory)src\GreenHellHeadTracking\libs</UnityEnginePath>
   </PropertyGroup>
