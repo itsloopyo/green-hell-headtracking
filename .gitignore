@@ -2,8 +2,9 @@
 bin/
 obj/
 
-# Game reference DLLs (copied at build time)
-libs/
+# Game reference DLLs (copied at build time), but keep the checked-in stub source
+**/libs/*
+!**/libs/UnityStubs.cs
 lib/
 
 # NuGet
