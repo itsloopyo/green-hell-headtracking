@@ -31,8 +31,14 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # run-install: false - this workspace declares no conda dependencies
+      # (pixi is a task runner; dotnet and PowerShell are system tools). The
+      # action's post-install `pixi list` exits 1 on an empty environment, so
+      # we let `pixi run package` provision on demand instead.
       - name: Setup pixi
         uses: prefix-dev/setup-pixi@v0.9.6
+        with:
+          run-install: false
 
       # Build + package through the SAME command a developer runs locally. Every
       # build dependency (MelonLoader + the Unity reference stubs) is produced by
