@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.2.0] - 2026-08-03
+
+### Added
+
+- recenter via tracker app request instead of auto-recenter on tracking loss
+
+### Fixed
+
+- show full control set in pixi install via shared -Controls
+
 ## [1.1.3] - 2026-06-07
 
 ### Added
