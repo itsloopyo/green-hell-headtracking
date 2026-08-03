@@ -49,7 +49,6 @@ namespace GreenHellHeadTracking
         private static bool _worldSpaceYaw;
         private const float PositionLimitYUp = 0.15f;
         private const float PositionLimitYDown = 0.05f;
-        private static bool _autoRecentered;
         private static bool _positionCentered;
         private static bool _hasCentered;
 
@@ -232,6 +231,17 @@ namespace GreenHellHeadTracking
 
         public override void OnUpdate()
         {
+            if (_receiver != null && _processor != null && _receiver.TryConsumeRecenterRequest())
+            {
+                _processor.RecenterTo(_receiver.GetLatestPose());
+                _trackingLossHandler?.TriggerStabilization();
+                _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
+                _poseInterpolator?.Reset();
+                _positionInterpolator?.Reset();
+                _hasCentered = true;
+                _instance?.LoggerInstance.Msg("Recentered by tracker app");
+            }
+
             _hotkeyHandler?.Update(Time.time);
 
             if (ChordHotkeys.IsActionPressed(KeyCode.PageUp, ChordHotkeys.PositionLetter))
@@ -387,7 +397,6 @@ namespace GreenHellHeadTracking
             switch (lossState)
             {
                 case TrackingLossState.Active:
-                    _autoRecentered = false;
                     ApplyActiveTracking(deltaTime);
                     break;
                 case TrackingLossState.Holding:
@@ -397,19 +406,6 @@ namespace GreenHellHeadTracking
                 case TrackingLossState.Stabilizing:
                     ApplyFadingTracking(deltaTime);
                     break;
-            }
-
-            if (_trackingLossHandler.NeedsRecenter && !_autoRecentered)
-            {
-                _autoRecentered = true;
-                _processor.Recenter();
-                _trackingLossHandler.ClearRecenterFlag();
-                if (_receiver != null)
-                {
-                    _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
-                }
-                _positionInterpolator?.Reset();
-                _instance?.LoggerInstance.Msg("Auto-recentered after tracking loss");
             }
 
             // Apply tracking offset via the view matrix instead of Camera.onPreCull
