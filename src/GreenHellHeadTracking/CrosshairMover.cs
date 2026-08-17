@@ -15,6 +15,8 @@ namespace GreenHellHeadTracking
         private static bool _runtimeErrorLogged;
         private static RectTransform? _crosshairParent;
         private static object? _lastInstance;
+        private static RectTransform? _originalCapturedFor;
+        private static Vector2 _originalAnchoredPosition;
 
         public static void Initialize()
         {
@@ -75,7 +77,18 @@ namespace GreenHellHeadTracking
 
                     if (_crosshairParent != null)
                     {
-                        CrosshairUtility.OffsetByScreenPixels(_crosshairParent, offset);
+                        // The authored position must be read before any offset lands on it, and
+                        // only once per RectTransform: the catch below clears _crosshairParent, so
+                        // a re-resolve of the same live transform would otherwise re-capture an
+                        // already-offset position and let the crosshair drift.
+                        if (_crosshairParent != _originalCapturedFor)
+                        {
+                            _originalCapturedFor = _crosshairParent;
+                            _originalAnchoredPosition = _crosshairParent.anchoredPosition;
+                        }
+
+                        CrosshairUtility.OffsetByScreenPixels(
+                            _crosshairParent, _originalAnchoredPosition, offset);
                     }
                 }
                 catch (Exception ex)
