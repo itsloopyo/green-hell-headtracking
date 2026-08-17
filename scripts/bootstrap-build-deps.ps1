@@ -37,7 +37,7 @@ Write-Host "Bootstrapping build dependencies (no game install required)..." -For
 # deploy.ps1 against a real install. Wiping them is what makes a local build
 # byte-for-byte reproduce the runner instead of silently picking up game DLLs.
 Get-ChildItem -Path $libsPath -Force |
-    Where-Object { $_.Name -ne 'UnityStubs.cs' } |
+    Where-Object { $_.Name -notin @('UnityStubs.cs', 'UnityUIStubs.cs') } |
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 # --- MelonLoader (net35) from the vendored zip ---
@@ -61,7 +61,11 @@ try {
 # declared source: UnityEngine.dll gets every type from UnityStubs.cs, and the
 # module shells stay genuinely empty (the SDK would otherwise glob every *.cs in
 # libs/ into all of them, redefining the Unity types in 8 assemblies).
-function Build-Stub([string]$assemblyName, [string]$compileItem) {
+function Build-Stub([string]$assemblyName, [string]$compileItem, [string[]]$references = @()) {
+    $refItems = ($references | ForEach-Object {
+        "    <Reference Include=`"$([System.IO.Path]::GetFileNameWithoutExtension($_))`"><HintPath>$_</HintPath><Private>false</Private></Reference>"
+    }) -join "`n"
+
     $proj = @"
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
@@ -73,6 +77,7 @@ function Build-Stub([string]$assemblyName, [string]$compileItem) {
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="$compileItem" />
+$refItems
   </ItemGroup>
 </Project>
 "@
@@ -86,12 +91,17 @@ function Build-Stub([string]$assemblyName, [string]$compileItem) {
 
 Build-Stub 'UnityEngine' 'UnityStubs.cs'
 
+# uGUI ships as its own assembly with no forwarder from UnityEngine.dll, so
+# its stubs must be compiled into UnityEngine.UI.dll or the emitted typerefs
+# name an assembly that does not declare them.
+Build-Stub 'UnityEngine.UI' 'UnityUIStubs.cs' @('UnityEngine.dll')
+
 $emptySourcePath = Join-Path $libsPath 'EmptyStub.cs'
 '// Empty stub assembly' | Out-File -FilePath $emptySourcePath -Encoding utf8
 $modules = @(
     'UnityEngine.CoreModule', 'UnityEngine.InputLegacyModule', 'UnityEngine.IMGUIModule',
     'UnityEngine.PhysicsModule', 'UnityEngine.UIModule', 'UnityEngine.TextRenderingModule',
-    'UnityEngine.UI', 'Assembly-CSharp'
+    'Assembly-CSharp'
 )
 foreach ($m in $modules) { Build-Stub $m 'EmptyStub.cs' }
 
