@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.1] - 2026-08-18
+
+### Fixed
+
+- offset from the authored anchoredPosition
+- migrate to the per-connection smoothing pair
+- match stub member kinds to the shipped Unity assemblies
+- compile the uGUI stubs into UnityEngine.UI, not UnityEngine
+
 ## [Unreleased]
 
 ### Changed
