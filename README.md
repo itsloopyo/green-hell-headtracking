@@ -68,7 +68,7 @@ The default yaw mode is **camera-local**: head yaw always pans the view horizont
 
 ### Phone App Setup
 
-This mod includes built-in smoothing to handle network jitter, so if your tracking app already provides a filtered signal, you can send directly from your phone to the mod on port 4242 without needing OpenTrack on PC.
+This mod smooths network jitter automatically: a tracker on another device gets 0.15 smoothing (`RemoteSmoothing`), a tracker on this PC gets none (`LocalSmoothing` 0.0), picked per connection from the packet source address. So if your tracking app already provides a filtered signal, you can send directly from your phone to the mod on port 4242 without needing OpenTrack on PC.
 
 1. Install an OpenTrack-compatible head tracking app
 2. Configure it to send to your PC's IP on port 4242 (run `ipconfig` to find your IP)

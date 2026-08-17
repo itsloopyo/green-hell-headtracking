@@ -74,17 +74,21 @@ namespace GreenHellHeadTracking
             _poseInterpolator = new PoseInterpolator();
 
             _processor.Sensitivity = new SensitivitySettings(1f, 1f, 1f, false, true, false);
-            _processor.SmoothingFactor = 0f;
+            // Two smoothing parameters, selected per connection by source address.
+            // This mod ships no config file, so both take the core defaults.
+            _processor.LocalSmoothing = SmoothingUtils.DefaultLocalSmoothing;
+            _processor.RemoteSmoothing = SmoothingUtils.DefaultRemoteSmoothing;
 
             _trackingLossHandler = new TrackingLossHandler();
             _baseRotationTracker = new BaseRotationTracker();
 
             _positionProcessor = new PositionProcessor
             {
+                // 0.40 forward / 0.10 back is the intended asymmetry on z, not a swap.
                 Settings = new PositionSettings(
                     1.0f, 1.0f, 1.0f,
-                    0.30f, PositionLimitYUp, 0.40f, 0.10f,
-                    0.15f,
+                    0.30f, PositionLimitYUp, PositionLimitYDown, 0.40f, 0.10f,
+                    SmoothingUtils.DefaultLocalSmoothing, SmoothingUtils.DefaultRemoteSmoothing,
                     false, false, false
                 ),
                 TrackerPivotForward = 0.01f
@@ -517,18 +521,22 @@ namespace GreenHellHeadTracking
                 _instance?.LoggerInstance.Msg("Recentered to initial head position");
             }
 
-            // Always update interpolator to maintain velocity state
-            var interpolatedPose = _poseInterpolator.Update(rawPose, deltaTime);
+            // Sample-rate-to-frame-rate interpolation is gated on receiving data, never on
+            // the smoothing value: LocalSmoothing is 0.0, and a smoothing-based gate would
+            // leave every local user with stepped motion on a high-refresh display.
+            rawPose = _poseInterpolator.Update(rawPose, deltaTime);
 
-            // Use interpolated pose only when smoothing absorbs prediction corrections;
-            // at smoothing=0, interpolation creates visible correction stutters
-            if (_processor.SmoothingFactor >= 0.001f)
-                rawPose = interpolatedPose;
+            // A connection change (local tracker <-> remote device) swaps which smoothing
+            // parameter applies, so refresh the flag every frame from the receiver.
+            bool isRemoteConnection = _receiver.IsRemoteConnection;
+            _processor.IsRemoteConnection = isRemoteConnection;
+            if (_positionProcessor != null)
+                _positionProcessor.IsRemoteConnection = isRemoteConnection;
 
             var processed = _processor.Process(rawPose, deltaTime);
 
-            // Processor handles smoothing internally (per-axis Euler, baseline floor).
-            // Use its output directly — no second smoothing layer.
+            // Processor handles smoothing internally (per-axis Euler, connection-selected
+            // LocalSmoothing / RemoteSmoothing). Use its output directly - no second layer.
             _smoothedTrackingRotation = _rotationEnabled
                 ? CameraRotationComposer.GetTrackingOnlyRotation(
                     processed.Yaw, processed.Pitch, processed.Roll)
@@ -555,9 +563,6 @@ namespace GreenHellHeadTracking
                 float eRoll = euler.z > 180f ? euler.z - 360f : euler.z;
                 var headRotQ = QuaternionUtils.FromYawPitchRoll(eYaw, ePitch, eRoll);
                 Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, deltaTime);
-                // Asymmetric Y clamp: prevent camera going below eye height
-                float clampedY = Mathf.Clamp(posOffset.Y, -PositionLimitYDown, PositionLimitYUp);
-                posOffset = new Vec3(posOffset.X, clampedY, posOffset.Z);
                 // Negate X and Z to match Green Hell's coordinate convention
                 posOffset = new Vec3(-posOffset.X, posOffset.Y, -posOffset.Z);
                 _pendingPositionOffset = PositionApplicator.ToHorizonLockedWorld(

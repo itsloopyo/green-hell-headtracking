@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Smoothing is now two parameters instead of one: `LocalSmoothing` (0.0) applies
+  when the tracker runs on this machine, `RemoteSmoothing` (0.15) applies when
+  the tracker is a remote device on the network. The value is selected per
+  connection from the packet source address and re-evaluated every frame, so
+  switching between a local tracker and a phone needs no restart.
+- Both parameters cover rotation and position, replacing the separate hardcoded
+  0.15 position smoothing.
+- Removed the hidden 0.15 baseline smoothing floor. A tracker on this PC now
+  gets zero-latency tracking instead of a silently enforced minimum.
+- Sample-rate-to-frame-rate interpolation is no longer gated on the smoothing
+  value, so local users keep smooth motion on high-refresh displays.
+- The asymmetric vertical position limit (0.15 up, 0.05 down) is now handed to
+  the position processor instead of clamped afterwards, so a deep crouch no
+  longer leaves the smoothing state saturated below the limit.
+
 ## [1.2.0] - 2026-08-03
 
 ### Added
