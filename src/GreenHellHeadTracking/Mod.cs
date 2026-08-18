@@ -563,8 +563,10 @@ namespace GreenHellHeadTracking
                 float eRoll = euler.z > 180f ? euler.z - 360f : euler.z;
                 var headRotQ = QuaternionUtils.FromYawPitchRoll(eYaw, ePitch, eRoll);
                 Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, deltaTime);
-                // Negate X and Z to match Green Hell's coordinate convention
-                posOffset = new Vec3(-posOffset.X, posOffset.Y, -posOffset.Z);
+                // Negate X to match Green Hell's coordinate convention. Z is NOT negated
+                // here any more: PositionApplicator flips it now, at the point the offset
+                // leaves the pipeline for Unity's +z-forward world space.
+                posOffset = new Vec3(-posOffset.X, posOffset.Y, posOffset.Z);
                 _pendingPositionOffset = PositionApplicator.ToHorizonLockedWorld(
                     posOffset, _cachedCameraTransform.rotation);
             }
