@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.2.2] - 2026-08-18
+
+### Fixed
+
+- commit the uGUI stub source so game-independent builds work
+
 ## [1.2.1] - 2026-08-18
 
 ### Fixed
