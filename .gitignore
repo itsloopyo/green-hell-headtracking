@@ -4,7 +4,7 @@ obj/
 
 # Game reference DLLs (copied at build time), but keep the checked-in stub source
 **/libs/*
-!**/libs/UnityStubs.cs
+!**/libs/*Stubs.cs
 lib/
 
 # NuGet
