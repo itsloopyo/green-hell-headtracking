@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.0] - 2026-08-20
+
+### Added
+
+- remove mod-side recentring, log OpenTrack connection state
+
 ## [1.2.2] - 2026-08-18
 
 ### Fixed
