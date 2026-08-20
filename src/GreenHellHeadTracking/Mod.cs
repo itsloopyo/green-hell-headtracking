@@ -49,13 +49,12 @@ namespace GreenHellHeadTracking
         private static bool _worldSpaceYaw;
         private const float PositionLimitYUp = 0.15f;
         private const float PositionLimitYDown = 0.05f;
-        private static bool _positionCentered;
-        private static bool _hasCentered;
 
         private static Vector3 _pendingPositionOffset;
         private static bool _hasRenderData;
 
         private static Mod? _instance;
+        private static bool _wasReceiving;
 
         public static bool IsTrackingActive => _trackingEnabled &&
                                                _receiver != null &&
@@ -103,7 +102,6 @@ namespace GreenHellHeadTracking
                 keyCode =>
                 {
                     var kc = (KeyCode)keyCode;
-                    if (kc == KeyCode.Home) return ChordHotkeys.IsActionPressed(kc, ChordHotkeys.RecenterLetter);
                     if (kc == KeyCode.End) return ChordHotkeys.IsActionPressed(kc, ChordHotkeys.ToggleLetter);
                     return UnityEngine.Input.GetKeyDown(kc);
                 },
@@ -111,7 +109,6 @@ namespace GreenHellHeadTracking
                 this,
                 0.3f
             );
-            _hotkeyHandler.SetRecenterKey((int)KeyCode.Home);
             _hotkeyHandler.SetToggleKey((int)KeyCode.End);
 
             _receiver.Log = msg => LoggerInstance.Msg(msg);
@@ -235,18 +232,9 @@ namespace GreenHellHeadTracking
 
         public override void OnUpdate()
         {
-            if (_receiver != null && _processor != null && _receiver.TryConsumeRecenterRequest())
-            {
-                _processor.RecenterTo(_receiver.GetLatestPose());
-                _trackingLossHandler?.TriggerStabilization();
-                _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
-                _poseInterpolator?.Reset();
-                _positionInterpolator?.Reset();
-                _hasCentered = true;
-                _instance?.LoggerInstance.Msg("Recentered by tracker app");
-            }
-
             _hotkeyHandler?.Update(Time.time);
+
+            MonitorConnectionState();
 
             if (ChordHotkeys.IsActionPressed(KeyCode.PageUp, ChordHotkeys.PositionLetter))
             {
@@ -258,6 +246,19 @@ namespace GreenHellHeadTracking
                 _worldSpaceYaw = !_worldSpaceYaw;
                 _instance?.LoggerInstance.Msg("Yaw mode: " + (_worldSpaceYaw ? "world-space (horizon-locked)" : "camera-local"));
             }
+        }
+
+        // Without this the log has no evidence that tracker packets ever reached the
+        // mod, which is the first thing to establish when a user reports no tracking.
+        private static void MonitorConnectionState()
+        {
+            bool isReceiving = _receiver != null && _receiver.IsReceiving;
+            if (isReceiving == _wasReceiving) return;
+
+            _wasReceiving = isReceiving;
+            _instance?.LoggerInstance.Msg(isReceiving
+                ? "OpenTrack connected - receiving tracker data"
+                : "OpenTrack disconnected - no tracker data");
         }
 
         // Three-state cycle: full -> rotation only -> position only -> full ...
@@ -313,17 +314,10 @@ namespace GreenHellHeadTracking
             _instance?.LoggerInstance.Msg("Head tracking " + (_trackingEnabled ? "enabled" : "disabled"));
         }
 
+        // Required by IHotkeyListener. The tracker app owns the centre, so the
+        // mod binds no key to this.
         public void OnHotkeyRecenter()
         {
-            _processor?.Recenter();
-            _trackingLossHandler?.TriggerStabilization();
-            if (_receiver != null)
-            {
-                _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
-            }
-            _poseInterpolator?.Reset();
-            _positionInterpolator?.Reset();
-            _instance?.LoggerInstance.Msg("Head tracking recentered");
         }
 
         internal static void RemoveTrackingOffset()
@@ -345,8 +339,6 @@ namespace GreenHellHeadTracking
             _pendingPositionOffset = Vector3.zero;
             _smoothedTrackingRotation = Quaternion.identity;
             _processor?.ResetSmoothing();
-            _positionCentered = false;
-            _hasCentered = false;
             _positionProcessor?.Reset();
             _poseInterpolator?.Reset();
             _positionInterpolator?.Reset();
@@ -359,7 +351,7 @@ namespace GreenHellHeadTracking
                 return;
             }
 
-            // Cache Camera.main — avoids per-frame FindObjectWithTag.
+            // Cache Camera.main - avoids per-frame FindObjectWithTag.
             // Unity's overloaded == returns true for destroyed objects, triggering re-query.
             if (_cachedCamera == null)
             {
@@ -387,8 +379,8 @@ namespace GreenHellHeadTracking
 
             // Only actual signal loss feeds the loss handler. Gameplay pauses
             // (walkie talkie, menus) are NOT signal loss and must not trigger
-            // auto-recenter or fade — the prefix already removed the visual
-            // offset, so just return early.
+            // the fade - the prefix already removed the visual offset, so just
+            // return early.
             var lossState = _trackingLossHandler.Update(_receiver.IsReceiving, deltaTime);
 
             if (!shouldTrack)
@@ -473,7 +465,7 @@ namespace GreenHellHeadTracking
             viewMatrix.m23 = -viewMatrix.m23;
             _cachedCamera!.worldToCameraMatrix = viewMatrix;
 
-            // Outline camera is a child of the main camera — it inherits the
+            // Outline camera is a child of the main camera - it inherits the
             // transform but not the overridden worldToCameraMatrix. Apply the
             // same matrix so the outline renders from the tracked viewpoint.
             if (_cachedOutlineCamera != null)
@@ -510,17 +502,6 @@ namespace GreenHellHeadTracking
 
             var rawPose = _receiver.GetLatestPose();
 
-            // Auto-recenter on first valid tracking frame
-            if (!_hasCentered)
-            {
-                _hasCentered = true;
-                _processor.RecenterTo(rawPose);
-                _positionProcessor?.SetCenter(_receiver.GetLatestPosition());
-                _poseInterpolator.Reset();
-                _positionInterpolator?.Reset();
-                _instance?.LoggerInstance.Msg("Recentered to initial head position");
-            }
-
             // Sample-rate-to-frame-rate interpolation is gated on receiving data, never on
             // the smoothing value: LocalSmoothing is 0.0, and a smoothing-based gate would
             // leave every local user with stepped motion on a high-refresh display.
@@ -551,11 +532,6 @@ namespace GreenHellHeadTracking
             if (_positionEnabled && _receiver != null && _positionProcessor != null && _positionInterpolator != null)
             {
                 var rawPos = _receiver.GetLatestPosition();
-                if (!_positionCentered)
-                {
-                    _positionProcessor.SetCenter(rawPos);
-                    _positionCentered = true;
-                }
                 var interpolatedPos = _positionInterpolator.Update(rawPos, deltaTime);
                 var euler = _smoothedTrackingRotation.eulerAngles;
                 float eYaw = euler.y > 180f ? euler.y - 360f : euler.y;

@@ -13,7 +13,7 @@ set "MOD_VERSION=1.1.2"
 set "STATE_FILE=.headtracking-state.json"
 set "FRAMEWORK_TYPE=MelonLoader"
 set "MELONLOADER_MARKER=MelonLoader\net35\MelonLoader.dll"
-set "MOD_CONTROLS=Controls:&echo   Home/Ctrl+Shift+T - Recenter&echo   End/Ctrl+Shift+Y  - Toggle on/off&echo   PageUp/Ctrl+Shift+G - Toggle 6DOF&echo   PageDown/Ctrl+Shift+H - Toggle yaw mode"
+set "MOD_CONTROLS=Controls:&echo   End/Ctrl+Shift+Y  - Toggle on/off&echo   PageUp/Ctrl+Shift+G - Toggle 6DOF&echo   PageDown/Ctrl+Shift+H - Toggle yaw mode"
 :: MELONLOADER_MARKER tells us whether ML is already installed. Default is
 :: net35 (Unity 2017-era games). For IL2CPP / modern Mono games override
 :: to MelonLoader\net6\MelonLoader.dll. The bundled MelonLoader version is

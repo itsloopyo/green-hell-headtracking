@@ -45,7 +45,6 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
-| Recenter            | `Home`      | `Ctrl+Shift+T`  |
 | Toggle tracking     | `End`       | `Ctrl+Shift+Y`  |
 | Cycle tracking mode | `Page Up`   | `Ctrl+Shift+G`  |
 | Toggle yaw mode     | `Page Down` | `Ctrl+Shift+H`  |
@@ -93,13 +92,23 @@ If you want curve mapping, a visual preview, or extra filtering, route through O
    Green Hell Head Tracking initialized on port 4242
    ```
 4. Move your head in-game and the camera should follow
-5. Press Home to recenter if needed
+5. If the view sits off-centre, centre it in your tracker app (opentrack Center bind, the CENTER button in Headcam)
 
 ## Troubleshooting
+
+### Where the log is
+
+`<Green Hell>/MelonLoader/Latest.log` is the current session's log, written fresh
+on every launch. It records the port the mod listened on, which game methods it
+patched, and an `OpenTrack connected` line the moment the first tracker packet
+arrives. Send this file when reporting a problem. Earlier sessions are archived
+under `<Green Hell>/MelonLoader/Logs/`.
 
 ### Tracking not responding
 
 - Verify your tracker is sending to `127.0.0.1:4242`
+- Look for `OpenTrack connected` in `MelonLoader/Latest.log`. If it is absent, no
+  tracker packet ever reached the mod and the problem is upstream of the game.
 - Check the MelonLoader console for error messages
 - Press End to make sure tracking is enabled
 
@@ -120,7 +129,7 @@ netstat -ano | findstr 4242
 ### Mod not appearing in console
 
 - Verify all DLLs are in the `Mods` folder
-- Check for errors in `<Green Hell>/MelonLoader/Logs/`
+- Check for errors in `<Green Hell>/MelonLoader/Latest.log`
 
 ### Camera jittering
 
@@ -200,4 +209,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Disclaimer
 
-This mod is not affiliated with, endorsed by, or supported by Creepy Jar. "Green Hell" is a trademark of Creepy Jar S.A. Use this mod at your own risk — no warranty is provided. Back up your save files before installing any mods.
+This mod is not affiliated with, endorsed by, or supported by Creepy Jar. "Green Hell" is a trademark of Creepy Jar S.A. Use this mod at your own risk - no warranty is provided. Back up your save files before installing any mods.

@@ -17,8 +17,19 @@
 
 ## [Unreleased]
 
+### Added
+
+- An `OpenTrack connected` / `OpenTrack disconnected` line in the log, so a report
+  of "no head tracking" can be answered from the log alone: without it there was
+  no record that a tracker packet had ever reached the mod.
+
 ### Changed
 
+- Removed recentring from the mod entirely, including the `Home` /
+  `Ctrl+Shift+T` hotkey. The tracker app owns the centre, so the mod keeping one
+  of its own put a second centre in series with the tracker's and the two drifted
+  apart. Centre in your tracker app instead (opentrack's Center bind, the CENTER
+  button in Headcam).
 - Smoothing is now two parameters instead of one: `LocalSmoothing` (0.0) applies
   when the tracker runs on this machine, `RemoteSmoothing` (0.15) applies when
   the tracker is a remote device on the network. The value is selected per
