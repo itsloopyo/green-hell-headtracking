@@ -108,26 +108,28 @@ foreach ($dll in $modDlls) {
 # install-time source of truth. install.cmd extracts this zip directly.
 $ghVendorDir = Join-Path $ghStagingDir "vendor\melonloader"
 New-Item -ItemType Directory -Path $ghVendorDir -Force | Out-Null
+# Apache-2.0 section 4(a) requires the licence to travel with the redistributed
+# work, so a missing LICENSE fails the build rather than shipping the loader bare.
 foreach ($vendorFile in @("MelonLoader.x64.zip", "LICENSE", "README.md")) {
     $src = Join-Path $vendorMlDir $vendorFile
-    if (Test-Path $src) {
-        Copy-Item $src -Destination $ghVendorDir -Force
-        Write-Host "  vendor/melonloader/$vendorFile" -ForegroundColor Green
-    } elseif ($vendorFile -eq "MelonLoader.x64.zip") {
-        throw "Required vendor file missing: $src"
+    if (-not (Test-Path $src)) {
+        throw "Required vendor file missing: $src. The vendored loader must ship with its licence and provenance note. Run 'pixi run update-deps'."
     }
+    Copy-Item $src -Destination $ghVendorDir -Force
+    Write-Host "  vendor/melonloader/$vendorFile" -ForegroundColor Green
 }
 
-# Copy documentation
+# Copy documentation. LICENSE and THIRD-PARTY-NOTICES.md are licence obligations
+# on a binary distribution, not optional docs: a silent skip would turn a
+# compliance failure into a green build.
 $docFiles = @("README.md", "LICENSE", "CHANGELOG.md", "THIRD-PARTY-NOTICES.md")
 foreach ($doc in $docFiles) {
     $docPath = Join-Path $projectDir $doc
-    if (Test-Path $docPath) {
-        Copy-Item $docPath -Destination $ghStagingDir -Force
-        Write-Host "  $doc" -ForegroundColor Green
-    } elseif ($doc -eq "LICENSE") {
-        Write-Host "  WARNING: $doc not found" -ForegroundColor Yellow
+    if (-not (Test-Path $docPath)) {
+        throw "Required document not found: $doc. Every published ZIP is a binary distribution and must carry it."
     }
+    Copy-Item $docPath -Destination $ghStagingDir -Force
+    Write-Host "  $doc" -ForegroundColor Green
 }
 
 # install.cmd / uninstall.cmd resolve the game via shared/find-game.ps1.
@@ -177,6 +179,17 @@ if (Test-Path $nexusZipPath) { Remove-Item $nexusZipPath -Force }
 Write-Host ""
 Write-Host "Creating Nexus ZIP..." -ForegroundColor Cyan
 
+# The Nexus ZIP is a binary distribution too: the licences of everything
+# compiled into or bundled with the payload require their notices to travel
+# with it, so LICENSE and THIRD-PARTY-NOTICES.md ship at its root.
+foreach ($noticeDoc in @('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md')) {
+    $noticeSrc = Join-Path $projectDir $noticeDoc
+    if (-not (Test-Path $noticeSrc)) {
+        throw "Required notice file not found: $noticeDoc. Every published ZIP is a binary distribution and must carry it."
+    }
+    Copy-Item $noticeSrc -Destination $nexusStagingDir -Force
+    Write-Host "  $noticeDoc" -ForegroundColor Green
+}
 Push-Location $nexusStagingDir
 try {
     Compress-Archive -Path ".\*" -DestinationPath $nexusZipPath -Force

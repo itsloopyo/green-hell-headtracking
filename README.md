@@ -200,11 +200,14 @@ pixi run build
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+Third-party components bundled with or compiled into this mod are listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), each under its own licence.
+
 ## Credits
 
 - [Creepy Jar](https://www.creepyjar.com/) - Green Hell
 - [MelonLoader](https://melonwiki.xyz/) - Mod framework
-- [Harmony](https://github.com/pardeike/Harmony) - Runtime patching
+- [HarmonyX](https://github.com/BepInEx/HarmonyX) - Runtime patching, loaded by MelonLoader
 - [OpenTrack](https://github.com/opentrack/opentrack) - Head tracking protocol
 
 ## Disclaimer
