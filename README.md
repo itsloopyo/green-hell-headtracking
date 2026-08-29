@@ -1,8 +1,8 @@
 # Green Hell Head Tracking
 
-![Mod GIF](https://raw.githubusercontent.com/headcannonmods/green-hell-headtracking/main/assets/readme-clip.gif)
+![Green Hell running with this mod](https://raw.githubusercontent.com/itsloopyo/green-hell-headtracking/main/assets/readme-clip.gif)
 
-An **unofficial**, community-created MelonLoader mod that adds head tracking to Green Hell. Move your head to look around the jungle while your mouse controls where you aim.
+An unofficial head tracking mod for Green Hell that moves the view with your head while your mouse or controller keeps aiming, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
