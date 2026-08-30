@@ -178,9 +178,18 @@ $modContent = $modContent -replace '(MelonInfo\([^,]+,\s*"[^"]+",\s*")[^"]+"', "
 $modContent | Set-Content $modPath -NoNewline
 Write-Host "  Updated Mod.cs" -ForegroundColor Gray
 
+# install.cmd's MOD_VERSION is what the install writes into the launcher's
+# state file, which is where the launcher looks to spot a stale install.
+$installCmdPath = Join-Path $projectDir "scripts\install.cmd"
+$installCmdContent = Get-Content $installCmdPath -Raw
+if ($installCmdContent -notmatch 'set "MOD_VERSION=[^"]+"') { throw "MOD_VERSION line not found in $installCmdPath" }
+$installCmdContent = $installCmdContent -replace 'set "MOD_VERSION=[^"]+"', "set `"MOD_VERSION=$Version`""
+$installCmdContent | Set-Content $installCmdPath -NoNewline
+Write-Host "  Updated install.cmd" -ForegroundColor Gray
+
 # Step 4: Commit (if there are changes)
 Write-Host "Committing changes..." -ForegroundColor Cyan
-git add $csprojPath $modPath $changelogPath
+git add $csprojPath $modPath $installCmdPath $changelogPath
 $staged = git diff --cached --name-only
 if ($staged) {
     git commit -m "Release v$Version"
