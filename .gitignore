@@ -2,9 +2,9 @@
 bin/
 obj/
 
-# Game reference DLLs (copied at build time), but keep the checked-in stub source
+# Game reference DLLs and generated Unity reference stubs. The stub SOURCE lives in
+# cameraunlock-core/csharp/stubs, not here.
 **/libs/*
-!**/libs/*Stubs.cs
 lib/
 
 # NuGet

@@ -14,7 +14,7 @@ described under "Green Hell footage" below.
 | Component | Version | Licence | How it ships |
 |-----------|---------|---------|--------------|
 | MelonLoader | v0.6.6 | Apache-2.0 | Bundled verbatim in the installer ZIP |
-| cameraunlock-core | 0f7a63455ddeb91677c9268e88fd35833aa77359 | MIT | Compiled into `GreenHellHeadTracking.dll` |
+| cameraunlock-core | b107dc64b6bfe43b25d9c2bf867a6d31ce6b07e0 | MIT | Compiled into `GreenHellHeadTracking.dll` |
 | HarmonyX | shipped inside MelonLoader 0.6.6 | MIT | Inside the bundled MelonLoader archive (`0Harmony.dll`) |
 | Harmony | upstream of HarmonyX | MIT | Its code travels inside `0Harmony.dll` |
 | Il2CppInterop | shipped inside MelonLoader 0.6.6 | LGPL-3.0 | Inside the bundled MelonLoader archive |
@@ -1633,7 +1633,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Git submodule at `cameraunlock-core/`, compiled into `GreenHellHeadTracking.dll`. Our own code,
 MIT licensed, reproduced here so the notices are complete.
 
-- Pinned commit: `0f7a63455ddeb91677c9268e88fd35833aa77359`
+- Pinned commit: `b107dc64b6bfe43b25d9c2bf867a6d31ce6b07e0`
 
 ```
 MIT License
@@ -1673,11 +1673,11 @@ obligation here. It is credited because the wire format is its work.
 
 ## Unity API stubs
 
-`src/GreenHellHeadTracking/libs/UnityStubs.cs` and `UnityUIStubs.cs` declare the
-Unity and game type signatures this mod compiles against, so that a contributor
-or a CI runner can build it without owning Green Hell or installing Unity. They
-are written by hand from the public Unity scripting documentation: declarations
-and empty bodies only, for interoperability. No Unity source, no decompiled
+`cameraunlock-core/csharp/stubs/UnityStubs.cs` and `UnityUIStubs.cs` declare the
+Unity type signatures this mod compiles against, so that a contributor or a CI
+runner can build it without owning Green Hell or installing Unity. They are
+written by hand from the public Unity scripting documentation: declarations and
+empty bodies only, for interoperability. No Unity source, no decompiled
 output and no Unity binary is copied into or distributed by this repository, and
 the stub assemblies they compile to are build-time reference assemblies that
 appear in neither release ZIP. At runtime the real engine assemblies supplied by

@@ -8,12 +8,10 @@
 # files in the repo, with NO Green Hell install required:
 #
 #   - MelonLoader.dll / 0Harmony.dll : extracted from the vendored MelonLoader zip
-#   - UnityEngine.dll                : compiled from the checked-in UnityStubs.cs
-#                                      (our own API-only stub source - zero Unity
-#                                      binaries enter the repo or the build)
-#   - empty per-module reference assemblies (UnityEngine.*Module, UnityEngine.UI,
-#     Assembly-CSharp): satisfy the csproj `<Reference HintPath>` entries; every
-#     actual type lives in the UnityEngine.dll stub above.
+#   - UnityEngine.dll, UnityEngine.UI.dll and the empty module / Assembly-CSharp
+#     reference shells : compiled by cameraunlock-core/csharp/stubs/build-unity-stubs.ps1
+#     from the shared stub sources there (our own API-only declarations - zero
+#     Unity binaries enter the repo or the build)
 #
 # The build references these stubs via Directory.Build.props (UnityEnginePath ->
 # libs), never the game, so local and CI compile against byte-identical assemblies.
@@ -24,21 +22,21 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
 $libsPath = Join-Path $projectRoot 'src/GreenHellHeadTracking/libs'
 $vendorZip = Join-Path $projectRoot 'vendor/melonloader/MelonLoader.x64.zip'
-$stubSource = Join-Path $libsPath 'UnityStubs.cs'
+$stubBuilder = Join-Path $projectRoot 'cameraunlock-core/csharp/stubs/build-unity-stubs.ps1'
 
 if (-not (Test-Path $vendorZip)) { throw "Vendored MelonLoader not found at $vendorZip" }
-if (-not (Test-Path $stubSource)) { throw "UnityStubs.cs not found at $stubSource" }
+if (-not (Test-Path $stubBuilder)) {
+    throw "Shared stub builder not found at $stubBuilder. Run 'git submodule update --init'."
+}
 New-Item -ItemType Directory -Path $libsPath -Force | Out-Null
 
 Write-Host "Bootstrapping build dependencies (no game install required)..." -ForegroundColor Cyan
 
-# Start from a clean libs/ - keep only the tracked stub source. On a CI runner
-# libs/ is empty (gitignored); locally it may hold stale DLLs from a past
-# deploy.ps1 against a real install. Wiping them is what makes a local build
-# byte-for-byte reproduce the runner instead of silently picking up game DLLs.
-Get-ChildItem -Path $libsPath -Force |
-    Where-Object { $_.Name -notin @('UnityStubs.cs', 'UnityUIStubs.cs') } |
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+# Start from a clean libs/. On a CI runner libs/ is empty (gitignored); locally
+# it may hold stale DLLs from a past deploy.ps1 against a real install. Wiping
+# them is what makes a local build reproduce the runner instead of silently
+# picking up game DLLs. Nothing in libs/ is tracked, so the wipe strands nothing.
+Get-ChildItem -Path $libsPath -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 
 # --- MelonLoader (net35) from the vendored zip ---
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -56,58 +54,17 @@ try {
     Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# --- Unity reference stubs, compiled from our own UnityStubs.cs ---
-# EnableDefaultCompileItems=false so each stub assembly compiles ONLY its
-# declared source: UnityEngine.dll gets every type from UnityStubs.cs, and the
-# module shells stay genuinely empty (the SDK would otherwise glob every *.cs in
-# libs/ into all of them, redefining the Unity types in 8 assemblies).
-function Build-Stub([string]$assemblyName, [string]$compileItem, [string[]]$references = @()) {
-    $refItems = ($references | ForEach-Object {
-        "    <Reference Include=`"$([System.IO.Path]::GetFileNameWithoutExtension($_))`"><HintPath>$_</HintPath><Private>false</Private></Reference>"
-    }) -join "`n"
-
-    $proj = @"
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <LangVersion>11</LangVersion>
-    <AssemblyName>$assemblyName</AssemblyName>
-    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <NoWarn>CS0169;CS0649;CS0067;CS0660;CS0661</NoWarn>
-  </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="$compileItem" />
-$refItems
-  </ItemGroup>
-</Project>
-"@
-    $projPath = Join-Path $libsPath "Stub_$assemblyName.csproj"
-    $proj | Out-File -FilePath $projPath -Encoding utf8
-    dotnet build $projPath -c Release -o $libsPath --nologo -v q
-    if ($LASTEXITCODE -ne 0) { throw "Failed to build stub assembly $assemblyName" }
-    Remove-Item $projPath -ErrorAction SilentlyContinue
-    Write-Host "  Stub: $assemblyName.dll" -ForegroundColor Gray
-}
-
-Build-Stub 'UnityEngine' 'UnityStubs.cs'
-
-# uGUI ships as its own assembly with no forwarder from UnityEngine.dll, so
-# its stubs must be compiled into UnityEngine.UI.dll or the emitted typerefs
-# name an assembly that does not declare them.
-Build-Stub 'UnityEngine.UI' 'UnityUIStubs.cs' @('UnityEngine.dll')
-
-$emptySourcePath = Join-Path $libsPath 'EmptyStub.cs'
-'// Empty stub assembly' | Out-File -FilePath $emptySourcePath -Encoding utf8
-$modules = @(
-    'UnityEngine.CoreModule', 'UnityEngine.InputLegacyModule', 'UnityEngine.IMGUIModule',
-    'UnityEngine.PhysicsModule', 'UnityEngine.UIModule', 'UnityEngine.TextRenderingModule',
+# --- Unity reference stubs, from the shared sources in the core submodule ---
+# -EmptyModule is spelled out rather than defaulted because this mod needs one
+# entry the fleet default does not carry: Assembly-CSharp, the game's own script
+# assembly. Nothing here binds a type out of it - the csproj references it only
+# so Harmony can name the methods it patches - so an empty shell is the whole of
+# it. UnityEngine.AnimationModule is dropped for the mirror reason: neither this
+# csproj nor CameraUnlock.Core.Unity references it.
+& $stubBuilder -OutputPath $libsPath -TargetFramework net472 -EmptyModule `
+    'UnityEngine.CoreModule', 'UnityEngine.InputLegacyModule', 'UnityEngine.IMGUIModule', `
+    'UnityEngine.PhysicsModule', 'UnityEngine.UIModule', 'UnityEngine.TextRenderingModule', `
     'Assembly-CSharp'
-)
-foreach ($m in $modules) { Build-Stub $m 'EmptyStub.cs' }
-
-# Cleanup compiler droppings so only the reference DLLs remain in libs/.
-Remove-Item $emptySourcePath -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $libsPath '*.deps.json') -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $libsPath '*.pdb') -Force -ErrorAction SilentlyContinue
+if ($LASTEXITCODE -ne 0) { throw "Stub build failed" }
 
 Write-Host "Build dependencies ready." -ForegroundColor Green
