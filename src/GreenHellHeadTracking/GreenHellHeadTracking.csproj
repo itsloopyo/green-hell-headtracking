@@ -11,8 +11,12 @@
     <OutputType>Library</OutputType>
     <Authors>itsloopyo</Authors>
     <Description>Head tracking mod for Green Hell</Description>
-    <!-- Suppress reference resolution warnings for Unity DLLs (version conflicts are expected) -->
-    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3245;MSB3243</MSBuildWarningsAsMessages>
+    <!-- Version conflicts between the Unity reference assemblies are expected. -->
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3243</MSBuildWarningsAsMessages>
+    <!-- An unresolved reference is only a warning by default, so a mistyped
+         -p:UnityEnginePath= would compile on and report hundreds of CS0246
+         "type not found" errors instead of the one line naming the cause. -->
+    <MSBuildWarningsAsErrors>$(MSBuildWarningsAsErrors);MSB3245</MSBuildWarningsAsErrors>
   </PropertyGroup>
 
   <!-- CameraUnlock shared libraries -->
@@ -22,8 +26,10 @@
     <ProjectReference Include="..\..\cameraunlock-core\csharp\src\CameraUnlock.Core.Unity.Harmony\CameraUnlock.Core.Unity.Harmony.csproj" />
   </ItemGroup>
 
-  <!-- Try local libs folder first (for build without game installed) -->
-  <ItemGroup Condition="Exists('$(MSBuildProjectDirectory)\libs')">
+  <!-- MelonLoader and Harmony come from the vendored MelonLoader zip, which
+       scripts/bootstrap-build-deps.ps1 extracts into libs\. A game install is
+       never consulted for them: vendored is the source of truth. -->
+  <ItemGroup>
     <Reference Include="MelonLoader">
       <HintPath>libs\MelonLoader.dll</HintPath>
       <Private>false</Private>
@@ -32,93 +38,43 @@
       <HintPath>libs\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
+  </ItemGroup>
+
+  <!-- Engine and game reference assemblies, resolved from exactly one place.
+       UnityEnginePath defaults to the generated stubs in libs\ (see
+       Directory.Build.props), so a contributor who owns Green Hell and a CI
+       runner that does not compile against byte-identical assemblies.
+       -p:UnityEnginePath=<install>\GH_Data\Managed points the build at the real
+       game, which is how the stubs get validated. There is deliberately no
+       autodetection of a Steam install: a second reference source that wins
+       silently is how a build passes locally and then fails on a runner. -->
+  <ItemGroup>
     <Reference Include="UnityEngine">
-      <HintPath>libs\UnityEngine.dll</HintPath>
+      <HintPath>$(UnityEnginePath)\UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>libs\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(UnityEnginePath)\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.InputLegacyModule">
-      <HintPath>libs\UnityEngine.InputLegacyModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>libs\Assembly-CSharp.dll</HintPath>
+      <HintPath>$(UnityEnginePath)\UnityEngine.InputLegacyModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.UIModule">
-      <HintPath>libs\UnityEngine.UIModule.dll</HintPath>
+      <HintPath>$(UnityEnginePath)\UnityEngine.UIModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.UI">
-      <HintPath>libs\UnityEngine.UI.dll</HintPath>
+      <HintPath>$(UnityEnginePath)\UnityEngine.UI.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.PhysicsModule">
-      <HintPath>libs\UnityEngine.PhysicsModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-  </ItemGroup>
-
-  <!-- Fallback to game installation paths -->
-  <PropertyGroup Condition="'$(GREEN_HELL_PATH)' != ''">
-    <GreenHellPath>$(GREEN_HELL_PATH)</GreenHellPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(GreenHellPath)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\common\Green Hell')">
-    <GreenHellPath>C:\Program Files (x86)\Steam\steamapps\common\Green Hell</GreenHellPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(GreenHellPath)' == '' And Exists('C:\Program Files\Steam\steamapps\common\Green Hell')">
-    <GreenHellPath>C:\Program Files\Steam\steamapps\common\Green Hell</GreenHellPath>
-  </PropertyGroup>
-  <PropertyGroup>
-    <MelonLoaderPath>$(GreenHellPath)\MelonLoader</MelonLoaderPath>
-    <ManagedPath>$(GreenHellPath)\GH_Data\Managed</ManagedPath>
-    <!-- Set Unity path for CameraUnlock.Core.Unity references -->
-    <UnityEnginePath>$(ManagedPath)</UnityEnginePath>
-  </PropertyGroup>
-
-  <!-- MelonLoader references (net35 for .NET Framework compatibility) -->
-  <ItemGroup Condition="'$(MelonLoaderPath)' != '' And Exists('$(MelonLoaderPath)\net35')">
-    <Reference Include="MelonLoader">
-      <HintPath>$(MelonLoaderPath)\net35\MelonLoader.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="0Harmony">
-      <HintPath>$(MelonLoaderPath)\net35\0Harmony.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-  </ItemGroup>
-
-  <!-- Game assemblies from Managed folder -->
-  <ItemGroup Condition="'$(ManagedPath)' != '' And Exists('$(ManagedPath)')">
-    <Reference Include="UnityEngine">
-      <HintPath>$(ManagedPath)\UnityEngine.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(ManagedPath)\UnityEngine.CoreModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.UIModule">
-      <HintPath>$(ManagedPath)\UnityEngine.UIModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.UI">
-      <HintPath>$(ManagedPath)\UnityEngine.UI.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.InputLegacyModule">
-      <HintPath>$(ManagedPath)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <HintPath>$(UnityEnginePath)\UnityEngine.PhysicsModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>$(ManagedPath)\Assembly-CSharp.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="UnityEngine.PhysicsModule">
-      <HintPath>$(ManagedPath)\UnityEngine.PhysicsModule.dll</HintPath>
+      <HintPath>$(UnityEnginePath)\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

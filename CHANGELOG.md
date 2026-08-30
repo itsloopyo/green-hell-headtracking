@@ -23,6 +23,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- The build resolved `UnityEngine.dll`, `UnityEngine.CoreModule.dll`,
+  `UnityEngine.InputLegacyModule.dll` and `Assembly-CSharp.dll` from a local Green
+  Hell install whenever one was found, silently and with no warning, because the
+  `libs/` and game-install reference groups were not mutually exclusive and the
+  csproj overrode `UnityEnginePath` to the game's `GH_Data\Managed`. Anyone who
+  owns the game was compiling against different assemblies than CI. References now
+  come from `$(UnityEnginePath)` alone, which defaults to the generated stubs;
+  `-p:UnityEnginePath=<install>\GH_Data\Managed` is the explicit opt-in for
+  validating the stubs against the real game. An unresolved reference (MSB3245) is
+  now an error rather than a suppressed warning, so a mistyped path says so.
+
 ### Added
 
 - An `OpenTrack connected` / `OpenTrack disconnected` line in the log, so a report
