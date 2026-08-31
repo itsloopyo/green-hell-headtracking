@@ -86,7 +86,8 @@ namespace GreenHellHeadTracking
                 // 0.40 forward / 0.10 back is the intended asymmetry on z, not a swap.
                 Settings = new PositionSettings(
                     1.0f, 1.0f, 1.0f,
-                    0.30f, PositionLimitYUp, PositionLimitYDown, 0.40f, 0.10f,
+                    PositionSettings.Default.LimitX, PositionLimitYUp, PositionLimitYDown,
+                    PositionSettings.Default.LimitZ, PositionSettings.Default.LimitZBack,
                     SmoothingUtils.DefaultLocalSmoothing, SmoothingUtils.DefaultRemoteSmoothing,
                     false, false, false
                 ),
