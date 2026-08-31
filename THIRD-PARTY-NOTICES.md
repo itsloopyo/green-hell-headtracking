@@ -14,7 +14,7 @@ described under "Green Hell footage" below.
 | Component | Version | Licence | How it ships |
 |-----------|---------|---------|--------------|
 | MelonLoader | v0.6.6 | Apache-2.0 | Bundled verbatim in the installer ZIP |
-| cameraunlock-core | fec3b4c8a6fe9c45401cf65d3d43d4f5acd22b72 | MIT | Compiled into `GreenHellHeadTracking.dll` |
+| cameraunlock-core | f441e29427b7422a584ba492dddd7788881804b0 | MIT | Compiled into `GreenHellHeadTracking.dll` |
 | HarmonyX | shipped inside MelonLoader 0.6.6 | MIT | Inside the bundled MelonLoader archive (`0Harmony.dll`) |
 | Harmony | upstream of HarmonyX | MIT | Its code travels inside `0Harmony.dll` |
 | Il2CppInterop | shipped inside MelonLoader 0.6.6 | LGPL-3.0 | Inside the bundled MelonLoader archive |
@@ -1255,11 +1255,11 @@ SOFTWARE.
 The MIT License (MIT)
 =====================
 
-Copyright Ã‚Â© `2016-2026 Washi`
+Copyright Ãƒâ€šÃ‚Â© `2016-2026 Washi`
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
-files (the Ã¢â‚¬Å“SoftwareÃ¢â‚¬Â), to deal in the Software without
+files (the ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œSoftwareÃƒÂ¢Ã¢â€šÂ¬Ã‚Â), to deal in the Software without
 restriction, including without limitation the rights to use,
 copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the
@@ -1269,7 +1269,7 @@ conditions:
 The above copyright notice and this permission notice shall be
 included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED Ã¢â‚¬Å“AS ISÃ¢â‚¬Â, WITHOUT WARRANTY OF ANY KIND,
+THE SOFTWARE IS PROVIDED ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œAS ISÃƒÂ¢Ã¢â€šÂ¬Ã‚Â, WITHOUT WARRANTY OF ANY KIND,
 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
 OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
@@ -1347,11 +1347,11 @@ SOFTWARE.
 The MIT License (MIT)
 =====================
 
-Copyright Ã‚Â© 2020 - 2022 Lava Gang
+Copyright Ãƒâ€šÃ‚Â© 2020 - 2022 Lava Gang
 
 Permission is hereby granted, free of charge, to any person
 obtaining a copy of this software and associated documentation
-files (the Ã¢â‚¬Å“SoftwareÃ¢â‚¬Â), to deal in the Software without
+files (the ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œSoftwareÃƒÂ¢Ã¢â€šÂ¬Ã‚Â), to deal in the Software without
 restriction, including without limitation the rights to use,
 copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the
@@ -1361,7 +1361,7 @@ conditions:
 The above copyright notice and this permission notice shall be
 included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED Ã¢â‚¬Å“AS ISÃ¢â‚¬Â, WITHOUT WARRANTY OF ANY KIND,
+THE SOFTWARE IS PROVIDED ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œAS ISÃƒÂ¢Ã¢â€šÂ¬Ã‚Â, WITHOUT WARRANTY OF ANY KIND,
 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
 OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
 NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
@@ -1406,7 +1406,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 MIT License
 
-Copyright (c) 2019Ã¢â‚¬â€œ2022 Bradley Grainger
+Copyright (c) 2019ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“2022 Bradley Grainger
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1633,7 +1633,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Git submodule at `cameraunlock-core/`, compiled into `GreenHellHeadTracking.dll`. Our own code,
 MIT licensed, reproduced here so the notices are complete.
 
-- Pinned commit: `fec3b4c8a6fe9c45401cf65d3d43d4f5acd22b72`
+- Pinned commit: `f441e29427b7422a584ba492dddd7788881804b0`
 
 ```
 MIT License
