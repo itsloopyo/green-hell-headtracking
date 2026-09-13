@@ -8,6 +8,7 @@ An unofficial head tracking mod for Green Hell that moves the view with your hea
 
 - 6DOF head tracking via OpenTrack UDP (yaw, pitch, roll, plus positional lean)
 - Decoupled look and aim: look around freely with your head while your mouse stays on target
+- Works with any OpenTrack compatible tracker - free options available for PC, iOS and Android
 - Aim reticle that follows your mouse when head tracking moves the camera
 
 ## Requirements
@@ -16,6 +17,13 @@ An unofficial head tracking mod for Green Hell that moves the view with your hea
 - [OpenTrack](https://github.com/opentrack/opentrack) or an OpenTrack-compatible tracker (smartphone, webcam, or dedicated hardware)
 
 ## Installation
+
+### Lopari
+
+Download [Lopari](https://lopari.app), choose **Green Hell**, and click
+**Play with head tracking**.
+
+### Standalone Installer
 
 1. Download the latest release from the [Releases page](https://github.com/itsloopyo/green-hell-headtracking/releases)
 2. Extract the ZIP anywhere
