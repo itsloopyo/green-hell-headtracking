@@ -6,6 +6,7 @@ channels = ["conda-forge"]
 platforms = ["win-64"]
 
 [tasks]
+update-submodule = "git submodule update --remote cameraunlock-core && powershell -NoProfile -ExecutionPolicy Bypass -File cameraunlock-core/scripts/update-submodule.ps1"
 sync = "git submodule update --remote cameraunlock-core"
 # Extract net35 MelonLoader DLLs from the vendored zip into libs/ and compile the
 # Unity reference stubs from cameraunlock-core/csharp/stubs beside them, so the
