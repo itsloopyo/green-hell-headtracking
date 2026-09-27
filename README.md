@@ -2,14 +2,13 @@
 
 ![Green Hell running with this mod](https://raw.githubusercontent.com/itsloopyo/green-hell-headtracking/main/assets/readme-clip.gif)
 
-An unofficial head tracking mod for Green Hell that moves the view with your head while your mouse or controller keeps aiming, driven by OpenTrack over UDP, with no VR headset required.
+An unofficial head tracking mod for Green Hell that moves the view with your head while your mouse or controller keeps aiming, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
 ## Features
 
-- 6DOF head tracking via OpenTrack UDP (yaw, pitch, roll, plus positional lean)
-- Decoupled look and aim: look around freely with your head while your mouse stays on target
+- Decoupled look and aim: head tracking moves the view, your mouse/controller keeps aiming
+- 6DOF tracking: yaw, pitch and roll plus positional lean
 - Works with any OpenTrack compatible tracker - free options available for PC, iOS and Android
-- Aim reticle that follows your mouse when head tracking moves the camera
 
 ## Requirements
 
