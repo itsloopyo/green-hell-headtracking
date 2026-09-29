@@ -23,7 +23,10 @@ verify-refs = { cmd = "powershell -ExecutionPolicy Bypass -File cameraunlock-cor
 # Manual; commit the result. CI does not run this.
 update-deps = "powershell -ExecutionPolicy Bypass -File scripts/update-deps.ps1"
 install = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/deploy.ps1 Release", depends-on = ["build"] }
-package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build"] }
+test = "dotnet test tests/GreenHellHeadTracking.Tests/GreenHellHeadTracking.Tests.csproj"
+render-config = { cmd = "dotnet test tests/GreenHellHeadTracking.Tests/GreenHellHeadTracking.Tests.csproj --filter RenderConfig && node cameraunlock-core/scripts/encode-seed.mjs", env = { CAMERAUNLOCK_RENDER_CONFIG = "write" } }
+check-config = "node cameraunlock-core/scripts/check-canonical-config.mjs && node cameraunlock-core/scripts/encode-seed.mjs --check"
+package = { cmd = "powershell -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build", "test", "check-config"] }
 uninstall = "scripts\\uninstall.cmd"
 clean = "dotnet clean src/GreenHellHeadTracking/GreenHellHeadTracking.csproj"
 release = "powershell -ExecutionPolicy Bypass -File scripts/release.ps1"

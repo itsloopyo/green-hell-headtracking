@@ -56,6 +56,7 @@
 *.conf text eol=lf
 *.config text eol=lf
 *.ini text eol=lf
+config/CameraUnlock.ini -text whitespace=cr-at-eol
 *.properties text eol=lf
 Dockerfile text eol=lf
 Makefile text eol=lf

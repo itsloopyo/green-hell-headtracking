@@ -48,7 +48,7 @@ install.cmd "D:\Games\Green Hell"
 
 ## Controls
 
-Two equivalent binding sets - use whichever your keyboard has:
+Default bindings (configurable in `CameraUnlock.ini` or `Defaults.ini`):
 
 | Action              | Nav-cluster | Chord           |
 |---------------------|-------------|-----------------|
@@ -65,9 +65,108 @@ Two equivalent binding sets - use whichever your keyboard has:
 
 The default yaw mode is **camera-local**: head yaw always pans the view horizontally on screen, even if you pitch the game camera steeply up or down. Pressing Page Down switches to **world-space** yaw, which locks horizontal head movement to gravity so the horizon stays level; this feels more natural at moderate angles but degenerates toward roll when you look straight up or down.
 
+## Configuration
+
+Restart the game after editing either config file. The tracking mode and yaw
+hotkeys save their changes for the next launch. Toggling tracking on or off
+lasts for the current session; `EnableOnStartup` controls the next launch.
+
+Green Hell keeps camera-local yaw and its vertical lean limits (0.15 metres up,
+0.05 metres down) as game defaults. Change these in `Mods/CameraUnlock.ini`;
+they do not follow `Defaults.ini`.
+
+<!-- cameraunlock:config -->
+The mod reads its settings from `Mods\CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
+
+A setting set to `default` takes its value from `Defaults.ini`, which every head tracking mod that keeps its settings in `CameraUnlock.ini` reads. Head tracking mods that keep their settings in another file do not read it. Changing a setting in `Defaults.ini` changes it in every game that has it set to `default`. Writing a value in place of `default` changes that setting for this game only. When the mod saves a setting that a hotkey changed in game, it writes the new value in place of `default`, so that setting no longer follows `Defaults.ini` in this game until you set it to `default` again.
+
+`Defaults.ini` is `%AppData%\CameraUnlock\Defaults.ini` on Windows; `$XDG_CONFIG_HOME/CameraUnlock/Defaults.ini` on Linux, or `~/.config/CameraUnlock/Defaults.ini` where `XDG_CONFIG_HOME` is not set, under Wine and Proton too; and `~/Library/Application Support/CameraUnlock/Defaults.ini` on macOS. The mod's log, where it writes one, names the file it read.
+
+When the mod starts and finds no `Defaults.ini`, it creates one holding the built-in values, unless Windows runs the game as a packaged app, or the game runs on Linux or macOS without Wine or Proton. The mod never changes `Defaults.ini` after that. Edit it with any text editor.
+
+On Linux and macOS without Wine or Proton, this version reads its settings and saves none: it creates no `CameraUnlock.ini` and a change made in game lasts until the game closes.
+
+The built-in value of each setting set to `default` below:
+
+- `UdpPort=4242`
+- `EnableOnStartup=true`
+- `RotationEnabled=true`
+- `LocalSmoothing=0.0`
+- `RemoteSmoothing=0.15`
+- `PositionEnabled=true`
+- `PositionLimitX=0.3`
+- `PositionLimitZ=0.4`
+- `PositionLimitZBack=0.1`
+- `ToggleKey=End, Ctrl+Shift+Y`
+- `CycleTrackingModeKey=PageUp, Ctrl+Shift+G`
+- `YawModeKey=PageDown, Ctrl+Shift+H`
+
+With every setting at its default, the file reads:
+
+```ini
+; Green Hell head tracking settings.
+; Comments start with ; and go on their own line. Text after a value is part of the value.
+; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
+; A setting set to default takes its value from Defaults.ini, which every head tracking mod
+; that keeps its settings in CameraUnlock.ini reads: %AppData%\CameraUnlock\Defaults.ini on
+; Windows, $XDG_CONFIG_HOME/CameraUnlock/Defaults.ini (normally ~/.config/CameraUnlock) on
+; Linux, under Wine and Proton too, and ~/Library/Application Support/CameraUnlock/Defaults.ini
+; on macOS. The log names the file it read. Change a setting in Defaults.ini to change it in
+; every game that has it set to default, or write a value here instead of default to change it
+; for this game only.
+
+[CameraUnlock]
+; Written by the mod. Leave this section in place.
+ConfigFormat=1
+
+[Network]
+; UDP port the mod receives tracker data on (OpenTrack protocol).
+UdpPort=default
+
+[General]
+; true: head tracking is on when the game starts. ToggleKey turns it on and off.
+EnableOnStartup=default
+; true: yaw turns around the world's up axis. false: around the camera's own up axis.
+WorldSpaceYaw=false
+; true: turning your head turns the view.
+; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
+RotationEnabled=default
+
+[Smoothing]
+; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
+LocalSmoothing=default
+; Smoothing when the tracker is another device on the network, such as a phone.
+; 0 is the least, 1 the most.
+RemoteSmoothing=default
+
+[Position]
+; true: moving your head moves the view.
+; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
+PositionEnabled=default
+; How far, in metres, leaning left or right can move the view.
+PositionLimitX=default
+; How far, in metres, raising your head can move the view.
+PositionLimitY=0.15
+; How far, in metres, lowering your head can move the view.
+PositionLimitYDown=0.05
+; How far, in metres, leaning forward can move the view.
+PositionLimitZ=default
+; How far, in metres, leaning back can move the view.
+PositionLimitZBack=default
+
+[Hotkeys]
+; Turns head tracking on and off.
+ToggleKey=default
+; Changes the tracking mode: rotation and position, rotation only, position only.
+CycleTrackingModeKey=default
+; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
+YawModeKey=default
+```
+<!-- /cameraunlock:config -->
+
 ## Setting Up OpenTrack
 
-The mod listens for OpenTrack pose data on UDP port `4242`, on every network
+The mod listens for OpenTrack pose data on UDP port `4242` by default, on every network
 interface. One datagram is six little-endian 64-bit floats in the order
 `x, y, z, yaw, pitch, roll`: position in centimetres, rotation in degrees, 48
 bytes in total. Anything that sends that to that port drives the view.
@@ -208,7 +307,10 @@ For a complete removal, also delete the `MelonLoader` folder and `version.dll` f
 
 - [.NET SDK](https://dotnet.microsoft.com/download) (any recent version)
 - [Pixi](https://pixi.sh/) task runner
-- Green Hell installed (for game assembly references)
+- Node.js (for configuration checks)
+
+Building uses the vendored loader and generated reference stubs. A game install
+is only needed to install and run the mod.
 
 ### Build Steps
 
@@ -232,6 +334,8 @@ pixi run build
 | `pixi run install` | Build and install to game directory |
 | `pixi run uninstall` | Remove the mod from the game |
 | `pixi run package` | Create release ZIP |
+| `pixi run render-config` | Regenerate the default config and manifest descriptor |
+| `pixi run test` | Test configuration loading, rendering and saves |
 | `pixi run clean` | Clean build artifacts |
 | `pixi run release` | Version bump, changelog, tag, and push |
 

@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using CameraUnlock.Core.Config;
 using MelonLoader;
 using HarmonyLib;
 using CameraUnlock.Core.Protocol;
@@ -17,12 +19,15 @@ using UnityEngine;
 
 namespace GreenHellHeadTracking
 {
-    public class Mod : MelonMod, IHotkeyListener
+    public class Mod : MelonMod
     {
         private static OpenTrackReceiver? _receiver;
         private static TrackingProcessor? _processor;
         private static PoseInterpolator? _poseInterpolator;
-        private static HotkeyHandler? _hotkeyHandler;
+        private static ConfigOwner<HeadTrackingConfigData> _configOwner = null!;
+        private static KeyBinding[] _toggleKeys = null!;
+        private static KeyBinding[] _modeKeys = null!;
+        private static KeyBinding[] _yawKeys = null!;
         private static TrackingLossHandler? _trackingLossHandler;
         private static GreenHellGameStateDetector? _gameStateDetector;
 
@@ -48,8 +53,6 @@ namespace GreenHellHeadTracking
         private static bool _positionEnabled = true;
         private static bool _rotationEnabled = true;
         private static bool _worldSpaceYaw;
-        private const float PositionLimitYUp = 0.15f;
-        private const float PositionLimitYDown = 0.05f;
 
         // Processor space with Green Hell's x sign applied. Kept relative to the body and
         // turned into world space when the matrix is built, so a held or fading lean
@@ -67,28 +70,38 @@ namespace GreenHellHeadTracking
             _instance = this;
             LoggerInstance.Msg("Green Hell Head Tracking initializing...");
 
+            _configOwner = new ConfigOwner<HeadTrackingConfigData>(new ConfigOwnerOptions<HeadTrackingConfigData>
+            {
+                Path = Path.Combine(Path.GetDirectoryName(typeof(Mod).Assembly.Location)!, "CameraUnlock.ini"),
+                Table = ModConfig.CreateTable(),
+                Header = new RenderHeader("Green Hell"),
+                Defaults = DefaultsFile.PerUser(),
+                StatusSink = message => LoggerInstance.Warning(message)
+            });
+            var loaded = _configOwner.Load();
+            foreach (var line in loaded.Log) LoggerInstance.Msg(line);
+            var config = loaded.Config;
+            _trackingEnabled = config.EnableOnStartup;
+            _rotationEnabled = config.RotationEnabled;
+            _positionEnabled = config.PositionEnabled;
+            _worldSpaceYaw = config.WorldSpaceYaw;
+            KeyBindings.TryParse(config.ToggleKeyName, out _toggleKeys, out _);
+            KeyBindings.TryParse(config.CycleTrackingModeKeyName, out _modeKeys, out _);
+            KeyBindings.TryParse(config.YawModeKeyName, out _yawKeys, out _);
+
             _receiver = new OpenTrackReceiver();
             _processor = new TrackingProcessor();
             _poseInterpolator = new PoseInterpolator();
 
             _processor.Sensitivity = new SensitivitySettings(1f, 1f, 1f, false, true, false);
-            // Two smoothing parameters, selected per connection by source address.
-            // This mod ships no config file, so both take the core defaults.
-            _processor.LocalSmoothing = SmoothingUtils.DefaultLocalSmoothing;
-            _processor.RemoteSmoothing = SmoothingUtils.DefaultRemoteSmoothing;
+            _processor.LocalSmoothing = config.LocalSmoothing;
+            _processor.RemoteSmoothing = config.RemoteSmoothing;
 
             _trackingLossHandler = new TrackingLossHandler();
 
             _positionProcessor = new PositionProcessor
             {
-                // 0.40 forward / 0.10 back is the intended asymmetry on z, not a swap.
-                Settings = new PositionSettings(
-                    1.0f, 1.0f, 1.0f,
-                    PositionSettings.Default.LimitX, PositionLimitYUp, PositionLimitYDown,
-                    PositionSettings.Default.LimitZ, PositionSettings.Default.LimitZBack,
-                    SmoothingUtils.DefaultLocalSmoothing, SmoothingUtils.DefaultRemoteSmoothing,
-                    false, false, false
-                ),
+                Settings = config.Position.WithSmoothing(config.LocalSmoothing, config.RemoteSmoothing),
                 TrackerPivotForward = 0.01f
             };
             _positionInterpolator = new PositionInterpolator();
@@ -97,28 +110,13 @@ namespace GreenHellHeadTracking
             // would hold the detector's throttled answer for as long as the game is paused.
             _gameStateDetector = new GreenHellGameStateDetector(() => Time.unscaledTime);
 
-            // Nav-cluster keys + Ctrl+Shift+<letter> chord alternatives so users
-            // on tenkeyless/60% boards still have hotkeys.
-            _hotkeyHandler = new HotkeyHandler(
-                keyCode =>
-                {
-                    var kc = (KeyCode)keyCode;
-                    if (kc == KeyCode.End) return ChordHotkeys.IsActionPressed(kc, ChordHotkeys.ToggleLetter);
-                    return UnityEngine.Input.GetKeyDown(kc);
-                },
-                null,
-                this,
-                0.3f
-            );
-            _hotkeyHandler.SetToggleKey((int)KeyCode.End);
-
             _receiver.Log = msg => LoggerInstance.Msg(msg);
-            _receiver.Start(OpenTrackReceiver.DefaultPort);
+            _receiver.Start(config.UdpPort);
 
             ApplyCameraPatches();
             ApplyHUDPatches();
 
-            LoggerInstance.Msg("Green Hell Head Tracking initialized on port " + OpenTrackReceiver.DefaultPort);
+            LoggerInstance.Msg("Green Hell Head Tracking initialized on port " + config.UdpPort);
         }
 
         private void ApplyCameraPatches()
@@ -191,19 +189,21 @@ namespace GreenHellHeadTracking
 
         public override void OnUpdate()
         {
-            _hotkeyHandler?.Update(Time.unscaledTime);
+            if (KeyBindingInput.IsTriggered(_toggleKeys)) OnHotkeyToggle(!_trackingEnabled);
 
             MonitorConnectionState();
 
-            if (ChordHotkeys.IsActionPressed(KeyCode.PageUp, ChordHotkeys.PositionLetter))
+            if (KeyBindingInput.IsTriggered(_modeKeys))
             {
                 CycleTrackingMode();
             }
 
-            if (ChordHotkeys.IsActionPressed(KeyCode.PageDown, ChordHotkeys.FourthToggleLetter))
+            if (KeyBindingInput.IsTriggered(_yawKeys))
             {
                 _worldSpaceYaw = !_worldSpaceYaw;
                 _instance?.LoggerInstance.Msg("Yaw mode: " + (_worldSpaceYaw ? "world-space (horizon-locked)" : "camera-local"));
+                foreach (var line in _configOwner.Save(c => c.WorldSpaceYaw = _worldSpaceYaw).Log)
+                    LoggerInstance.Msg(line);
             }
         }
 
@@ -262,6 +262,12 @@ namespace GreenHellHeadTracking
                     ? "rotation only (position disabled)"
                     : "position only (rotation disabled)";
             _instance?.LoggerInstance.Msg("Tracking mode: " + label);
+            var saved = _configOwner.Save(c =>
+            {
+                c.RotationEnabled = newRot;
+                c.PositionEnabled = newPos;
+            });
+            foreach (var line in saved.Log) _instance!.LoggerInstance.Msg(line);
         }
 
         public void OnHotkeyToggle(bool enabled)
@@ -272,12 +278,6 @@ namespace GreenHellHeadTracking
                 ResetTrackingState();
             }
             _instance?.LoggerInstance.Msg("Head tracking " + (_trackingEnabled ? "enabled" : "disabled"));
-        }
-
-        // Required by IHotkeyListener. The tracker app owns the centre, so the
-        // mod binds no key to this.
-        public void OnHotkeyRecenter()
-        {
         }
 
         internal static void RemoveTrackingOffset()
