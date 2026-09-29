@@ -14,7 +14,7 @@ described under "Green Hell footage" below.
 | Component | Version | Licence | How it ships |
 |-----------|---------|---------|--------------|
 | MelonLoader | v0.6.6 | Apache-2.0 | Bundled verbatim in the installer ZIP |
-| cameraunlock-core | 88a20e7789fb5ad907ae06136bc01184edbf4b21 | MIT | Compiled into `GreenHellHeadTracking.dll` |
+| cameraunlock-core | 1140fae1ce9c4e355d1e24940f91988be2188215 | MIT | Compiled into `GreenHellHeadTracking.dll` |
 | HarmonyX | shipped inside MelonLoader 0.6.6 | MIT | Inside the bundled MelonLoader archive (`0Harmony.dll`) |
 | Harmony | upstream of HarmonyX | MIT | Its code travels inside `0Harmony.dll` |
 | Il2CppInterop | shipped inside MelonLoader 0.6.6 | LGPL-3.0 | Inside the bundled MelonLoader archive |
@@ -1633,7 +1633,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Git submodule at `cameraunlock-core/`, compiled into `GreenHellHeadTracking.dll`. Our own code,
 MIT licensed, reproduced here so the notices are complete.
 
-- Pinned commit: `88a20e7789fb5ad907ae06136bc01184edbf4b21`
+- Pinned commit: `1140fae1ce9c4e355d1e24940f91988be2188215`
 
 ```
 MIT License
