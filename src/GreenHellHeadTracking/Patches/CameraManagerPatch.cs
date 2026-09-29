@@ -5,6 +5,8 @@ namespace GreenHellHeadTracking.Patches
         public static void LateUpdatePrefix()
         {
             Mod.RemoveTrackingOffset();
+            Mod.RefreshCameraCache();
+            Mod.UpdateTrackingState();
         }
 
         public static void LateUpdatePostfix()

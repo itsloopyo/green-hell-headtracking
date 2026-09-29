@@ -17,6 +17,7 @@ namespace GreenHellHeadTracking
         private static object? _lastInstance;
         private static RectTransform? _originalCapturedFor;
         private static Vector2 _originalAnchoredPosition;
+        private static bool _offsetApplied;
 
         public static void Initialize()
         {
@@ -89,6 +90,7 @@ namespace GreenHellHeadTracking
 
                         CrosshairUtility.OffsetByScreenPixels(
                             _crosshairParent, _originalAnchoredPosition, offset);
+                        _offsetApplied = true;
                     }
                 }
                 catch (Exception ex)
@@ -106,7 +108,15 @@ namespace GreenHellHeadTracking
 
         public static void ResetCrosshair()
         {
-            OffsetCrosshair(Vector2.zero);
+            if (!_offsetApplied) return;
+            _offsetApplied = false;
+
+            // A destroyed crosshair took its offset with it.
+            if (_crosshairParent != null)
+            {
+                CrosshairUtility.OffsetByScreenPixels(
+                    _crosshairParent, _originalAnchoredPosition, Vector2.zero);
+            }
         }
     }
 }

@@ -6,12 +6,7 @@ namespace GreenHellHeadTracking.Patches
 
         public static void UpdateAfterCameraPrefix()
         {
-            _applied = false;
-            if (Mod.IsTrackingActive)
-            {
-                Mod.ApplyTrackingToViewMatrix();
-                _applied = true;
-            }
+            _applied = Mod.ApplyTrackingToViewMatrix();
         }
 
         public static void UpdateAfterCameraPostfix()

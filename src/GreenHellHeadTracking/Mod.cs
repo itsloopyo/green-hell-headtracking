@@ -24,7 +24,6 @@ namespace GreenHellHeadTracking
         private static PoseInterpolator? _poseInterpolator;
         private static HotkeyHandler? _hotkeyHandler;
         private static TrackingLossHandler? _trackingLossHandler;
-        private static BaseRotationTracker? _baseRotationTracker;
         private static GreenHellGameStateDetector? _gameStateDetector;
 
         private static bool _trackingEnabled = true;
@@ -34,13 +33,15 @@ namespace GreenHellHeadTracking
 
         private const float MaxRaycastDistance = 1000f;
         private const float MinRaycastDistance = 0.5f;
-        private const float DistanceSmoothingRate = 15f;
-        private static float _lastHitDistance = 100f;
+        private static float _aimDepth = MaxRaycastDistance;
+
+        // Below these the faded pose is under a hundredth of a degree and a tenth of a
+        // millimetre, so it is dropped and the camera goes back to the game's own matrix.
+        private const float FadedRotationSqr = 1e-8f;
+        private const float FadedPositionSqr = 1e-8f;
 
         // Processor handles all rotation smoothing internally (per-axis Euler, no phantom roll).
-        // Smoothed tracking rotation for view matrix composition and aim offset
         private static Quaternion _smoothedTrackingRotation = Quaternion.identity;
-        private static Vector2 _smoothedScreenOffset = Vector2.zero;
 
         private static PositionProcessor? _positionProcessor;
         private static PositionInterpolator? _positionInterpolator;
@@ -50,18 +51,16 @@ namespace GreenHellHeadTracking
         private const float PositionLimitYUp = 0.15f;
         private const float PositionLimitYDown = 0.05f;
 
-        private static Vector3 _pendingPositionOffset;
+        // Processor space with Green Hell's x sign applied. Kept relative to the body and
+        // turned into world space when the matrix is built, so a held or fading lean
+        // follows the player as they turn.
+        private static Vec3 _positionOffset;
+
+        // True while the camera should render with the tracked view matrix this frame.
         private static bool _hasRenderData;
 
         private static Mod? _instance;
         private static bool _wasReceiving;
-
-        public static bool IsTrackingActive => _trackingEnabled &&
-                                               _receiver != null &&
-                                               _receiver.IsReceiving &&
-                                               (_gameStateDetector == null || _gameStateDetector.IsInGameplay);
-
-        public static Vector3 AimDirection => _baseRotationTracker?.BaseForward ?? Vector3.forward;
 
         public override void OnInitializeMelon()
         {
@@ -79,7 +78,6 @@ namespace GreenHellHeadTracking
             _processor.RemoteSmoothing = SmoothingUtils.DefaultRemoteSmoothing;
 
             _trackingLossHandler = new TrackingLossHandler();
-            _baseRotationTracker = new BaseRotationTracker();
 
             _positionProcessor = new PositionProcessor
             {
@@ -95,7 +93,9 @@ namespace GreenHellHeadTracking
             };
             _positionInterpolator = new PositionInterpolator();
 
-            _gameStateDetector = new GreenHellGameStateDetector(() => Time.time);
+            // Unscaled: the pause menu sets Time.timeScale to 0, which freezes Time.time and
+            // would hold the detector's throttled answer for as long as the game is paused.
+            _gameStateDetector = new GreenHellGameStateDetector(() => Time.unscaledTime);
 
             // Nav-cluster keys + Ctrl+Shift+<letter> chord alternatives so users
             // on tenkeyless/60% boards still have hotkeys.
@@ -117,7 +117,6 @@ namespace GreenHellHeadTracking
 
             ApplyCameraPatches();
             ApplyHUDPatches();
-            ApplyTriggerPatches();
 
             LoggerInstance.Msg("Green Hell Head Tracking initialized on port " + OpenTrackReceiver.DefaultPort);
         }
@@ -182,47 +181,6 @@ namespace GreenHellHeadTracking
             }
         }
 
-        private void ApplyTriggerPatches()
-        {
-            try
-            {
-                var triggerControllerType = Type.GetType("TriggerController, Assembly-CSharp");
-                if (triggerControllerType == null)
-                {
-                    LoggerInstance.Warning("TriggerController type not found - aim decoupling disabled");
-                    return;
-                }
-
-                var getCrossHairDirMethod = AccessTools.Method(triggerControllerType, "GetCrossHairDir");
-                if (getCrossHairDirMethod != null)
-                {
-                    var postfix = new HarmonyMethod(typeof(TriggerControllerPatch), nameof(TriggerControllerPatch.GetCrossHairDirPostfix));
-                    HarmonyInstance.Patch(getCrossHairDirMethod, postfix: postfix);
-                    LoggerInstance.Msg("Patched TriggerController.GetCrossHairDir - aim decoupling active");
-                }
-                else
-                {
-                    LoggerInstance.Warning("TriggerController.GetCrossHairDir not found");
-                }
-
-                var updateBestTriggerMethod = AccessTools.Method(triggerControllerType, "UpdateBestTrigger");
-                if (updateBestTriggerMethod != null)
-                {
-                    var transpiler = new HarmonyMethod(typeof(TriggerControllerPatch), nameof(TriggerControllerPatch.UpdateBestTriggerTranspiler));
-                    HarmonyInstance.Patch(updateBestTriggerMethod, transpiler: transpiler);
-                    LoggerInstance.Msg("Patched TriggerController.UpdateBestTrigger (transpiler) - dot product fix active");
-                }
-                else
-                {
-                    LoggerInstance.Warning("TriggerController.UpdateBestTrigger not found");
-                }
-            }
-            catch (Exception ex)
-            {
-                LoggerInstance.Error("Failed to apply TriggerController patches: " + ex);
-            }
-        }
-
         public override void OnDeinitializeMelon()
         {
             if (_cachedCamera != null) _cachedCamera.ResetWorldToCameraMatrix();
@@ -233,7 +191,7 @@ namespace GreenHellHeadTracking
 
         public override void OnUpdate()
         {
-            _hotkeyHandler?.Update(Time.time);
+            _hotkeyHandler?.Update(Time.unscaledTime);
 
             MonitorConnectionState();
 
@@ -286,6 +244,7 @@ namespace GreenHellHeadTracking
             {
                 _positionProcessor?.ResetSmoothing();
                 _positionInterpolator?.Reset();
+                _positionOffset = Vec3.Zero;
             }
             if (!newRot && _rotationEnabled)
             {
@@ -323,21 +282,16 @@ namespace GreenHellHeadTracking
 
         internal static void RemoveTrackingOffset()
         {
-            if (_cachedCamera != null && _hasRenderData)
-            {
-                _cachedCamera.ResetWorldToCameraMatrix();
-                if (_cachedOutlineCamera != null)
-                    _cachedOutlineCamera.ResetWorldToCameraMatrix();
-                _hasRenderData = false;
-                CrosshairMover.ResetCrosshair();
-            }
+            if (!_hasRenderData) return;
+            _hasRenderData = false;
+            ResetViewMatrix();
         }
 
         internal static void ResetTrackingState()
         {
             RemoveTrackingOffset();
-            _hasRenderData = false;
-            _pendingPositionOffset = Vector3.zero;
+            CrosshairMover.ResetCrosshair();
+            _positionOffset = Vec3.Zero;
             _smoothedTrackingRotation = Quaternion.identity;
             _processor?.ResetSmoothing();
             _positionProcessor?.Reset();
@@ -345,49 +299,45 @@ namespace GreenHellHeadTracking
             _positionInterpolator?.Reset();
         }
 
-        internal static void ApplyHeadTracking()
+        internal static void RefreshCameraCache()
         {
-            if (_receiver == null || _processor == null || _trackingLossHandler == null)
-            {
-                return;
-            }
-
-            // Cache Camera.main - avoids per-frame FindObjectWithTag.
             // Unity's overloaded == returns true for destroyed objects, triggering re-query.
-            if (_cachedCamera == null)
-            {
-                _cachedCamera = Camera.main;
-                if (_cachedCamera == null) return;
-                _cachedCameraTransform = _cachedCamera.transform;
+            if (_cachedCamera != null) return;
 
-                // The outline camera is a child of the main camera. It renders
-                // interactable objects with a replacement shader for the outline
-                // effect. We must apply the same view matrix so outlines track.
-                foreach (var cam in _cachedCamera.GetComponentsInChildren<Camera>(true))
+            _cachedOutlineCamera = null;
+            _cachedCamera = Camera.main;
+            if (_cachedCamera == null) return;
+            _cachedCameraTransform = _cachedCamera.transform;
+
+            // The outline camera is a child of the main camera. It renders
+            // interactable objects with a replacement shader for the outline
+            // effect. We must apply the same view matrix so outlines track.
+            foreach (var cam in _cachedCamera.GetComponentsInChildren<Camera>(true))
+            {
+                if (cam.name == "OutlineCamera")
                 {
-                    if (cam.name == "OutlineCamera")
-                    {
-                        _cachedOutlineCamera = cam;
-                        break;
-                    }
+                    _cachedOutlineCamera = cam;
+                    break;
                 }
             }
+        }
 
-            float deltaTime = Time.deltaTime;
-
-            bool shouldTrack = _trackingEnabled &&
-                              (_gameStateDetector == null || _gameStateDetector.IsInGameplay);
+        // Runs before CameraManager.LateUpdate, which calls HUDManager.UpdateAfterCamera
+        // part way through, so the HUD projects its markers with this frame's pose.
+        internal static void UpdateTrackingState()
+        {
+            // Head motion and tracker packets run on the wall clock. The game scales
+            // Time.deltaTime for slow motion (MainLevel) and yes/no dialogs (0.5).
+            float deltaTime = Time.unscaledDeltaTime;
 
             // Only actual signal loss feeds the loss handler. Gameplay pauses
             // (walkie talkie, menus) are NOT signal loss and must not trigger
-            // the fade - the prefix already removed the visual offset, so just
-            // return early.
-            var lossState = _trackingLossHandler.Update(_receiver.IsReceiving, deltaTime);
+            // the fade.
+            var lossState = _trackingLossHandler!.Update(_receiver!.IsReceiving, deltaTime);
 
-            if (!shouldTrack)
+            if (!_trackingEnabled || !_gameStateDetector!.IsInGameplay)
             {
                 _hasRenderData = false;
-                _pendingPositionOffset = Vector3.zero;
                 return;
             }
 
@@ -397,36 +347,44 @@ namespace GreenHellHeadTracking
                     ApplyActiveTracking(deltaTime);
                     break;
                 case TrackingLossState.Holding:
-                    ReapplyLastRotation();
+                    _hasRenderData = HasPose();
                     break;
                 case TrackingLossState.Fading:
                 case TrackingLossState.Stabilizing:
                     ApplyFadingTracking(deltaTime);
                     break;
             }
+        }
 
+        internal static void ApplyHeadTracking()
+        {
             // Apply tracking offset via the view matrix instead of Camera.onPreCull
             // (Camera events throw MissingMethodException under MelonLoader).
-            if (_hasRenderData && _cachedCamera != null && _cachedCameraTransform != null)
+            if (!_hasRenderData || _cachedCamera == null)
             {
-                SetHeadTrackedViewMatrix();
-
-                // Reticle compensation: raycast along the base aim direction to find
-                // the target distance, then project through the head-tracked view matrix.
-                Vector3 aimDir = _cachedCameraTransform.forward;
-
-                RaycastHit hit;
-                if (Physics.Raycast(_cachedCameraTransform.position, aimDir, out hit, MaxRaycastDistance,
-                        Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-                    && hit.distance >= MinRaycastDistance)
-                {
-                    float t = 1f - Mathf.Exp(-DistanceSmoothingRate * Time.deltaTime);
-                    _lastHitDistance = Mathf.Lerp(_lastHitDistance, hit.distance, t);
-                }
-
-                _smoothedScreenOffset = CanvasCompensation.CalculateAimScreenOffset(_cachedCamera, aimDir, _lastHitDistance, 1f);
-                CrosshairMover.OffsetCrosshair(_smoothedScreenOffset);
+                CrosshairMover.ResetCrosshair();
+                return;
             }
+
+            SetHeadTrackedViewMatrix();
+
+            // Reticle compensation: raycast along the clean aim to find the target
+            // distance, then project through the head-tracked view matrix. A miss
+            // projects the aim direction itself.
+            Vector3 aimDir = _cachedCameraTransform!.forward;
+            RaycastHit hit;
+            if (!Physics.Raycast(_cachedCameraTransform.position, aimDir, out hit, MaxRaycastDistance,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+            {
+                _aimDepth = MaxRaycastDistance;
+            }
+            else if (hit.distance >= MinRaycastDistance)
+            {
+                _aimDepth = hit.distance;
+            }
+
+            CrosshairMover.OffsetCrosshair(
+                CanvasCompensation.CalculateAimScreenOffset(_cachedCamera, aimDir, _aimDepth, 1f));
         }
 
         /// <summary>
@@ -436,10 +394,7 @@ namespace GreenHellHeadTracking
         /// </summary>
         private static void SetHeadTrackedViewMatrix()
         {
-            var euler = _smoothedTrackingRotation.eulerAngles;
-            float trackYaw = euler.y > 180f ? euler.y - 360f : euler.y;
-            float trackPitch = euler.x > 180f ? euler.x - 360f : euler.x;
-            float trackRoll = euler.z > 180f ? euler.z - 360f : euler.z;
+            var cameraRotation = _cachedCameraTransform!.rotation;
 
             // Default camera-local: yaw always pans view horizontally regardless
             // of game pitch. World-space (PGDN toggle) locks yaw to world up so
@@ -448,16 +403,20 @@ namespace GreenHellHeadTracking
             Quaternion modifiedRot;
             if (_worldSpaceYaw)
             {
+                var euler = _smoothedTrackingRotation.eulerAngles;
+                float trackYaw = euler.y > 180f ? euler.y - 360f : euler.y;
+                float trackPitch = euler.x > 180f ? euler.x - 360f : euler.x;
+                float trackRoll = euler.z > 180f ? euler.z - 360f : euler.z;
                 Quaternion worldYaw = Quaternion.AngleAxis(trackYaw, Vector3.up);
                 Quaternion localPR = Quaternion.Euler(trackPitch, 0f, trackRoll);
-                modifiedRot = worldYaw * _cachedCameraTransform!.rotation * localPR;
+                modifiedRot = worldYaw * cameraRotation * localPR;
             }
             else
             {
-                Quaternion headLocal = Quaternion.Euler(trackPitch, trackYaw, trackRoll);
-                modifiedRot = _cachedCameraTransform!.rotation * headLocal;
+                modifiedRot = cameraRotation * _smoothedTrackingRotation;
             }
-            Vector3 modifiedPos = _cachedCameraTransform.position + _pendingPositionOffset;
+            Vector3 modifiedPos = _cachedCameraTransform.position
+                + PositionApplicator.ToHorizonLockedWorld(_positionOffset, cameraRotation);
 
             Matrix4x4 viewMatrix = Matrix4x4.TRS(modifiedPos, modifiedRot, Vector3.one).inverse;
             viewMatrix.m20 = -viewMatrix.m20;
@@ -475,15 +434,13 @@ namespace GreenHellHeadTracking
 
         /// <summary>
         /// Temporarily applies the head-tracked view matrix so that WorldToScreenPoint
-        /// calls (e.g. in HUDManager.UpdateAfterCamera) project to the correct positions.
-        /// Uses cached tracking data from the previous frame.
+        /// calls in HUDManager.UpdateAfterCamera project to where the frame is drawn.
         /// </summary>
-        internal static void ApplyTrackingToViewMatrix()
+        internal static bool ApplyTrackingToViewMatrix()
         {
-            if (!IsTrackingActive) return;
-            if (_cachedCamera == null || _cachedCameraTransform == null) return;
-            if (_smoothedTrackingRotation == Quaternion.identity && _pendingPositionOffset == Vector3.zero) return;
+            if (!_hasRenderData || _cachedCamera == null) return false;
             SetHeadTrackedViewMatrix();
+            return true;
         }
 
         internal static void ResetViewMatrix()
@@ -494,93 +451,70 @@ namespace GreenHellHeadTracking
                 _cachedOutlineCamera.ResetWorldToCameraMatrix();
         }
 
+        private static bool HasPose()
+        {
+            var q = _smoothedTrackingRotation;
+            return q.x != 0f || q.y != 0f || q.z != 0f
+                || _positionOffset.X != 0f || _positionOffset.Y != 0f || _positionOffset.Z != 0f;
+        }
+
         private static void ApplyActiveTracking(float deltaTime)
         {
-            if (_receiver == null || _processor == null || _poseInterpolator == null || _cachedCameraTransform == null || _cachedCamera == null)
-            {
-                throw new InvalidOperationException("ApplyActiveTracking called without required components initialized");
-            }
-
-            var rawPose = _receiver.GetLatestPose();
+            var rawPose = _receiver!.GetLatestPose();
 
             // Sample-rate-to-frame-rate interpolation is gated on receiving data, never on
             // the smoothing value: LocalSmoothing is 0.0, and a smoothing-based gate would
             // leave every local user with stepped motion on a high-refresh display.
-            rawPose = _poseInterpolator.Update(rawPose, deltaTime);
+            rawPose = _poseInterpolator!.Update(rawPose, deltaTime);
 
             // A connection change (local tracker <-> remote device) swaps which smoothing
             // parameter applies, so refresh the flag every frame from the receiver.
             bool isRemoteConnection = _receiver.IsRemoteConnection;
-            _processor.IsRemoteConnection = isRemoteConnection;
-            if (_positionProcessor != null)
-                _positionProcessor.IsRemoteConnection = isRemoteConnection;
+            _processor!.IsRemoteConnection = isRemoteConnection;
+            _positionProcessor!.IsRemoteConnection = isRemoteConnection;
 
             var processed = _processor.Process(rawPose, deltaTime);
 
             // Processor handles smoothing internally (per-axis Euler, connection-selected
             // LocalSmoothing / RemoteSmoothing). Use its output directly - no second layer.
-            _smoothedTrackingRotation = _rotationEnabled
-                ? CameraRotationComposer.GetTrackingOnlyRotation(
-                    processed.Yaw, processed.Pitch, processed.Roll)
-                : Quaternion.identity;
-
-            var gameRotation = _cachedCameraTransform.localRotation;
-
-            _baseRotationTracker?.Update(_cachedCameraTransform, gameRotation, _smoothedTrackingRotation);
-
-            // Position processing: tracker position
-            _pendingPositionOffset = Vector3.zero;
-            if (_positionEnabled && _receiver != null && _positionProcessor != null && _positionInterpolator != null)
+            float yaw = 0f, pitch = 0f, roll = 0f;
+            if (_rotationEnabled)
             {
-                var rawPos = _receiver.GetLatestPosition();
-                var interpolatedPos = _positionInterpolator.Update(rawPos, deltaTime);
-                var euler = _smoothedTrackingRotation.eulerAngles;
-                float eYaw = euler.y > 180f ? euler.y - 360f : euler.y;
-                float ePitch = euler.x > 180f ? euler.x - 360f : euler.x;
-                float eRoll = euler.z > 180f ? euler.z - 360f : euler.z;
-                var headRotQ = QuaternionUtils.FromYawPitchRoll(eYaw, ePitch, eRoll);
+                yaw = processed.Yaw;
+                pitch = processed.Pitch;
+                roll = processed.Roll;
+            }
+            _smoothedTrackingRotation = CameraRotationComposer.GetTrackingOnlyRotation(yaw, pitch, roll);
+
+            _positionOffset = Vec3.Zero;
+            if (_positionEnabled)
+            {
+                var interpolatedPos = _positionInterpolator!.Update(_receiver.GetLatestPosition(), deltaTime);
+                var headRotQ = QuaternionUtils.FromYawPitchRoll(yaw, pitch, roll);
                 Vec3 posOffset = _positionProcessor.Process(interpolatedPos, headRotQ, deltaTime);
                 // Negate X to match Green Hell's coordinate convention. Z is NOT negated
-                // here any more: PositionApplicator flips it now, at the point the offset
-                // leaves the pipeline for Unity's +z-forward world space.
-                posOffset = new Vec3(-posOffset.X, posOffset.Y, posOffset.Z);
-                _pendingPositionOffset = PositionApplicator.ToHorizonLockedWorld(
-                    posOffset, _cachedCameraTransform.rotation);
+                // here: PositionApplicator flips it, at the point the offset leaves the
+                // pipeline for Unity's +z-forward world space.
+                _positionOffset = new Vec3(-posOffset.X, posOffset.Y, posOffset.Z);
             }
 
             _hasRenderData = true;
-        }
-
-        private static void ReapplyLastRotation()
-        {
-            if (_cachedCameraTransform == null)
-            {
-                throw new InvalidOperationException("ReapplyLastRotation called without cached camera");
-            }
-
-            if (_smoothedTrackingRotation != Quaternion.identity)
-            {
-                _hasRenderData = true;
-            }
         }
 
         private static void ApplyFadingTracking(float deltaTime)
         {
-            if (_cachedCameraTransform == null || _trackingLossHandler == null)
-            {
-                throw new InvalidOperationException("ApplyFadingTracking called without required components initialized");
-            }
+            float t = _trackingLossHandler!.GetFadeInterpolation(deltaTime);
 
-            _smoothedTrackingRotation = _trackingLossHandler.ApplyFade(_smoothedTrackingRotation, deltaTime);
+            var q = Quaternion.Slerp(_smoothedTrackingRotation, Quaternion.identity, t);
+            _smoothedTrackingRotation = new Vector3(q.x, q.y, q.z).sqrMagnitude < FadedRotationSqr
+                ? Quaternion.identity
+                : q;
 
-            _hasRenderData = true;
+            var p = Vec3.Lerp(_positionOffset, Vec3.Zero, t);
+            _positionOffset = p.SqrMagnitude < FadedPositionSqr ? Vec3.Zero : p;
 
-            // Camera is always clean (tracking only applied during rendering),
-            // so localRotation IS the game rotation.
-            var gameRotation = _cachedCameraTransform.localRotation;
-            _baseRotationTracker?.Update(_cachedCameraTransform, gameRotation, _smoothedTrackingRotation);
+            _hasRenderData = HasPose();
         }
-
     }
 
 }
